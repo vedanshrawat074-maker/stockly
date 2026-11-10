@@ -61,6 +61,7 @@ export type StockMovement = {
 
 export type SaleLineItem = {
   product: string;
+  productName?: string;
   quantity: string;
   unitPrice: string;
   lineTotal: string;

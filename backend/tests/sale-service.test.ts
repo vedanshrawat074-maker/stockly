@@ -5,7 +5,7 @@ import { ProductModel } from "../src/models/product";
 import { SaleModel, saleStatuses } from "../src/models/sale";
 import { StockMovementModel } from "../src/models/stock-movement";
 import { compareDecimals } from "../src/utils/decimal-arithmetic";
-import { createSale } from "../src/services/sale-service";
+import { createSale, listSales } from "../src/services/sale-service";
 import { planFefoAllocations, type FefoCandidate } from "../src/services/fefo-allocation";
 
 function batch(
@@ -136,6 +136,7 @@ describe("sale service transaction behavior (mocked MongoDB)", () => {
       exec: vi.fn().mockResolvedValue([
         {
           _id: productId,
+          name: "Basmati Rice",
           sellingPrice: mongoose.Types.Decimal128.fromString("0.10"),
         },
       ]),
@@ -205,6 +206,7 @@ describe("sale service transaction behavior (mocked MongoDB)", () => {
     });
 
     const line = (result.sale as unknown as { lineItems: Array<Record<string, unknown>> }).lineItems[0];
+    expect(line.productName).toBe("Basmati Rice");
     expect(line.unitPrice.toString()).toBe("0.10");
     expect(line.lineTotal.toString()).toBe("0.03");
     expect(line.allocations).toEqual([
@@ -289,6 +291,50 @@ describe("sale service transaction behavior (mocked MongoDB)", () => {
     ).rejects.toMatchObject({ code: "TRANSACTIONS_UNSUPPORTED", statusCode: 503 });
     expect(saleCreate).not.toHaveBeenCalled();
     expect(movementCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("sale list product-name compatibility", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("uses stored name snapshots and store-scoped current names for legacy sale lines", async () => {
+    const storeId = new mongoose.Types.ObjectId();
+    const snapshotProductId = new mongoose.Types.ObjectId();
+    const legacyProductId = new mongoose.Types.ObjectId();
+    const deletedProductId = new mongoose.Types.ObjectId();
+    const sales = [
+      {
+        lineItems: [
+          { product: snapshotProductId, productName: "Name at sale time", quantity: mongoose.Types.Decimal128.fromString("1") },
+          { product: legacyProductId, quantity: mongoose.Types.Decimal128.fromString("2") },
+          { product: deletedProductId, quantity: mongoose.Types.Decimal128.fromString("3") },
+        ],
+      },
+    ];
+    vi.spyOn(SaleModel, "find").mockReturnValue({
+      sort: vi.fn().mockReturnThis(),
+      skip: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      lean: vi.fn().mockResolvedValue(sales),
+    } as never);
+    vi.spyOn(SaleModel, "countDocuments").mockResolvedValue(1 as never);
+    const productQuery = {
+      select: vi.fn().mockReturnThis(),
+      lean: vi.fn().mockResolvedValue([{ _id: legacyProductId, name: "Current legacy name" }]),
+    };
+    const findProducts = vi.spyOn(ProductModel, "find").mockReturnValue(productQuery as never);
+
+    const result = await listSales(storeId, { page: 1, limit: 5 });
+
+    expect(findProducts).toHaveBeenCalledWith(expect.objectContaining({
+      store: storeId,
+      _id: { $in: expect.arrayContaining([legacyProductId, deletedProductId]) },
+    }));
+    expect(result.data[0].lineItems.map((line) => line.productName)).toEqual([
+      "Name at sale time",
+      "Current legacy name",
+      undefined,
+    ]);
   });
 });
 

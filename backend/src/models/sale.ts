@@ -8,6 +8,7 @@ export interface SaleBatchAllocation {
 
 export interface SaleLineItem {
   product: Types.ObjectId;
+  productName?: string;
   quantity: Types.Decimal128;
   unitPrice: Types.Decimal128;
   lineTotal: Types.Decimal128;
@@ -45,6 +46,7 @@ const allocationSchema = new Schema<SaleBatchAllocation>(
 const lineItemSchema = new Schema<SaleLineItem>(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
+    productName: { type: String, trim: true, maxlength: 160 },
     quantity: {
       type: Schema.Types.Decimal128,
       required: true,

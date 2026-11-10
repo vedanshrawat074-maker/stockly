@@ -130,6 +130,12 @@ product at sale time. Batch allocation uses FEFO, excludes expired stock, and
 uses batches without expiry after dated unexpired batches. Batch deductions,
 sale records, and one negative stock movement per allocation are written in one
 transaction. Reusing an idempotency key for different sale contents is rejected.
+Each newly created sale line also stores the product name as a sale-time
+snapshot. `POST /api/sales` and paginated `GET /api/sales` responses include
+that additive `lineItems[].productName` field. For older sale records without a
+snapshot, the list response supplies the current product name when that
+product still exists in the same store; it does not expose a cross-store
+product name. If the product no longer exists, the name is omitted.
 
 Only completed sales are currently supported. There is no cancellation or
 return endpoint, no refund processing, and no stock restoration. Future

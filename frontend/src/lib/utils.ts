@@ -1,3 +1,5 @@
+import type { SaleLineItem } from "./types";
+
 export function formatAmount(value: string | number, currency = "INR"): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return String(value);
@@ -6,6 +8,18 @@ export function formatAmount(value: string | number, currency = "INR"): string {
     currency,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+export function summarizeSaleProducts(
+  lineItems: Pick<SaleLineItem, "productName" | "quantity">[],
+): { items: Array<{ name: string; quantity: string }>; moreCount: number } {
+  return {
+    items: lineItems.slice(0, 2).map((line) => ({
+      name: line.productName?.trim() || "Product name unavailable",
+      quantity: line.quantity,
+    })),
+    moreCount: Math.max(0, lineItems.length - 2),
+  };
 }
 
 export function formatQuantity(value: string | number, maximumFractionDigits = 3): string {

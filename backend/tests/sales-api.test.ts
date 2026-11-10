@@ -85,7 +85,10 @@ describe("sales API", () => {
 
   it("lists sales with validated pagination and store scope", async () => {
     serviceMocks.listSales.mockResolvedValue({
-      data: [{ saleIdentifier: "sale-1" }],
+      data: [{
+        saleIdentifier: "sale-1",
+        lineItems: [{ product: productId, productName: "Basmati Rice", quantity: "3" }],
+      }],
       pagination: { page: 2, limit: 5, totalItems: 6, totalPages: 2 },
     });
 
@@ -95,6 +98,7 @@ describe("sales API", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data[0].saleIdentifier).toBe("sale-1");
+    expect(response.body.data[0].lineItems[0].productName).toBe("Basmati Rice");
     const [receivedStoreId, query] = serviceMocks.listSales.mock.calls[0];
     expect(receivedStoreId.toHexString()).toBe(storeId);
     expect(query).toEqual({ page: 2, limit: 5 });

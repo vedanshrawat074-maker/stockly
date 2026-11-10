@@ -238,6 +238,8 @@ describe("Sales API on a real MongoDB replica set", () => {
     const response = await saleRequest([{ productId: productId.toHexString(), quantity: "0.3" }], "fefo-success");
     expect(response.status).toBe(201);
     expect(response.body.data.totalAmount).toBe("0.03");
+    expect(response.body.data.lineItems[0].productName).toBe("Integration Product");
+    const firstSaleIdentifier = response.body.data.saleIdentifier as string;
     expect(response.body.data.lineItems[0].unitPrice).toBe("0.10");
     expect(response.body.data.lineItems[0].allocations).toMatchObject([
       { batch: soon._id.toHexString(), quantity: "0.2" },
@@ -248,7 +250,10 @@ describe("Sales API on a real MongoDB replica set", () => {
     expect((await BatchModel.findById(later._id))!.remainingQuantity.toString()).toBe("0.4");
     expect((await BatchModel.findById(noExpiry._id))!.remainingQuantity.toString()).toBe("1");
 
-    await ProductModel.updateOne({ _id: productId }, { $set: { sellingPrice: decimal("0.25") } });
+    await ProductModel.updateOne(
+      { _id: productId },
+      { $set: { sellingPrice: decimal("0.25"), name: "Renamed Integration Product" } },
+    );
     const secondBatch = await seedBatch("next", "1", {
       expiryDate: new Date(Date.now() + 3 * 86_400_000),
     });
@@ -258,6 +263,14 @@ describe("Sales API on a real MongoDB replica set", () => {
     );
     expect(second.status).toBe(201);
     expect(second.body.data.lineItems[0].unitPrice).toBe("0.25");
+    expect(second.body.data.lineItems[0].productName).toBe("Renamed Integration Product");
+    const saleHistory = await request(app)
+      .get("/api/sales?limit=20")
+      .set("X-Store-Id", storeId.toHexString());
+    const originalSale = saleHistory.body.data.find(
+      (sale: { saleIdentifier: string }) => sale.saleIdentifier === firstSaleIdentifier,
+    );
+    expect(originalSale.lineItems[0].productName).toBe("Integration Product");
     expect(second.body.data.lineItems[0].allocations).toMatchObject([
       { batch: later._id.toHexString(), quantity: "0.4" },
       { batch: secondBatch._id.toHexString(), quantity: "0.6" },

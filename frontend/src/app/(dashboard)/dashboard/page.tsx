@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, ArrowDownRight, ArrowRight, BellRing, Boxes, CircleDollarSign, PackageCheck, RefreshCw } from "lucide-react";
+import { Activity, ArrowDownRight, ArrowRight, BellRing, Boxes, CircleDollarSign, Copy, PackageCheck, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiClientError, stocklyApi } from "@/lib/api-client";
 import type { RestockingRecommendation, Sale } from "@/lib/types";
-import { formatAmount, formatDate, formatQuantity } from "@/lib/utils";
+import { formatAmount, formatDate, formatQuantity, summarizeSaleProducts } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState, PageHeading, StatCard, StatusBadge } from "@/components/dashboard-ui";
 import { useAuth } from "@/components/auth-provider";
 
@@ -26,6 +26,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copiedSaleId, setCopiedSaleId] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +56,16 @@ export default function DashboardPage() {
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
+  const copySaleId = async (saleId: string) => {
+    try {
+      await navigator.clipboard.writeText(saleId);
+      setCopiedSaleId(saleId);
+      setCopyError(null);
+    } catch {
+      setCopyError("Could not copy the sale ID. Check clipboard permissions and try again.");
+    }
+  };
+
   return (
     <div className="page-width">
       <PageHeading
@@ -76,24 +88,52 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between px-5 py-4">
             <div>
               <p className="text-sm font-semibold">Recent sales</p>
-              <p className="mt-1 text-xs text-slate-500">Latest completed sales recorded by the backend</p>
+              <p className="mt-1 text-xs text-slate-500">Latest sales recorded by the backend</p>
             </div>
             <Link href="/sales" className="button-quiet">All sales <ArrowRight size={14} /></Link>
           </div>
+          {copyError && <p role="alert" className="mx-5 mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{copyError}</p>}
+          {copiedSaleId && !copyError && <p role="status" className="sr-only">Sale ID copied.</p>}
           {loading && <div className="p-4"><LoadingState rows={3} /></div>}
           {!loading && data?.recentSales.length === 0 && <EmptyState title="No sales yet" message="Completed sales will appear here after they are recorded." />}
           {!loading && data && data.recentSales.length > 0 && (
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Sale</th><th>Items</th><th>Total</th><th>Recorded</th></tr></thead>
-                <tbody>{data.recentSales.map((sale) => (
-                  <tr key={sale._id}>
-                    <td className="font-medium text-slate-800">{sale.saleIdentifier}</td>
-                    <td>{sale.lineItems.length} items</td>
-                    <td className="font-semibold">{formatAmount(sale.totalAmount, currentStore?.currency ?? "INR")}</td>
-                    <td className="text-slate-500">{formatDate(sale.createdAt)}</td>
-                  </tr>
-                ))}</tbody>
+                <thead><tr><th>Products</th><th>Total</th><th>Status</th><th>Recorded</th><th><span className="sr-only">Sale ID</span></th></tr></thead>
+                <tbody>{data.recentSales.map((sale) => {
+                  const productSummary = summarizeSaleProducts(sale.lineItems);
+                  return (
+                    <tr key={sale._id}>
+                      <td>
+                        <div className="space-y-1">
+                          {productSummary.items.map((item, index) => (
+                            <p key={`${sale._id}-${index}`} className="text-sm font-semibold text-slate-800">
+                              {item.name} <span className="whitespace-nowrap text-slate-500">× {formatQuantity(item.quantity)}</span>
+                            </p>
+                          ))}
+                          {productSummary.moreCount > 0 && (
+                            <p className="text-xs font-medium text-slate-500">+{productSummary.moreCount} more</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="font-semibold">{formatAmount(sale.totalAmount, currentStore?.currency ?? "INR")}</td>
+                      <td><StatusBadge tone="green">{sale.status === "completed" ? "Completed" : sale.status}</StatusBadge></td>
+                      <td className="whitespace-nowrap text-slate-500">{formatDate(sale.createdAt)}</td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className="button-quiet !gap-1.5 !px-2 text-[11px] text-slate-500"
+                          aria-label={`Copy sale ID ${sale._id}`}
+                          title={`Copy sale ID ${sale._id}`}
+                          onClick={() => void copySaleId(sale._id)}
+                        >
+                          <Copy size={13} aria-hidden="true" />
+                          {copiedSaleId === sale._id ? "Copied" : "Copy ID"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
             </div>
           )}

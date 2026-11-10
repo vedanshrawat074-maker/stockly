@@ -31,6 +31,7 @@ type SaleAllocation = {
 
 type BuiltSaleLine = {
   product: Types.ObjectId;
+  productName: string;
   quantity: Types.Decimal128;
   unitPrice: Types.Decimal128;
   lineTotal: Types.Decimal128;
@@ -177,6 +178,7 @@ async function createSaleInTransaction(
       totalAmount = addDecimals(totalAmount, lineTotal);
       saleLines.push({
         product: productId,
+        productName: product.name,
         quantity: requestedQuantity,
         unitPrice,
         lineTotal,
@@ -263,8 +265,26 @@ export async function listSales(
       .lean(),
     SaleModel.countDocuments(filter),
   ]);
+  const productIds = [...new Set(data.flatMap((sale) =>
+    sale.lineItems
+      .filter((line) => !line.productName)
+      .map((line) => line.product.toHexString()),
+  ))].map((productId) => new Types.ObjectId(productId));
+  const legacyProductNames = productIds.length > 0
+    ? await ProductModel.find({ store: storeId, _id: { $in: productIds } }).select("_id name").lean()
+    : [];
+  const productNames = new Map(legacyProductNames.map((product) => [product._id.toHexString(), product.name]));
+
   return {
-    data,
+    data: data.map((sale) => ({
+      ...sale,
+      lineItems: sale.lineItems.map((line) => ({
+        ...line,
+        ...(!line.productName && productNames.has(line.product.toHexString())
+          ? { productName: productNames.get(line.product.toHexString()) }
+          : {}),
+      })),
+    })),
     pagination: {
       page: query.page,
       limit: query.limit,
