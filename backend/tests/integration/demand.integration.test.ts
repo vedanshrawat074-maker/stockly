@@ -4,6 +4,7 @@ import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/app";
 import { BatchModel } from "../../src/models/batch";
+import { ClothingVariantModel } from "../../src/models/clothing-variant";
 import { InventoryModel } from "../../src/models/inventory";
 import { ProductModel } from "../../src/models/product";
 import { SaleModel } from "../../src/models/sale";
@@ -106,6 +107,39 @@ async function seedSale(
   await SaleModel.collection.updateOne({ _id: sale._id }, { $set: { createdAt } });
 }
 
+async function seedClothingSale(
+  store: Types.ObjectId,
+  product: Types.ObjectId,
+  variant: Types.ObjectId,
+  quantity: string,
+  createdAt: Date,
+  soldAt?: Date | null,
+): Promise<void> {
+  const sale = await SaleModel.create({
+    store,
+    saleIdentifier: `clothing-sale-${new Types.ObjectId().toHexString()}`,
+    businessType: "clothing",
+    ...(soldAt !== undefined ? { soldAt } : {}),
+    lineItems: [{
+      product,
+      productName: "T-shirt",
+      variant,
+      variantSku: "TEE-M-NAVY",
+      size: "M",
+      colour: "navy",
+      quantity: decimal(quantity),
+      unitPrice: decimal("10"),
+      lineTotal: decimal("10"),
+      allocations: [],
+    }],
+    totalAmount: decimal("10"),
+    status: "completed",
+    idempotencyKey: `clothing-key-${new Types.ObjectId().toHexString()}`,
+    requestHash: "b".repeat(64),
+  });
+  await SaleModel.collection.updateOne({ _id: sale._id }, { $set: { createdAt } });
+}
+
 describe("daily demand aggregation on real MongoDB", () => {
   beforeAll(async () => {
     await mongoose.connect(getTestUri(), {
@@ -139,6 +173,7 @@ describe("daily demand aggregation on real MongoDB", () => {
       ProductModel,
       InventoryModel,
       BatchModel,
+      ClothingVariantModel,
       SaleModel,
       StockMovementModel,
     ];
@@ -152,6 +187,7 @@ describe("daily demand aggregation on real MongoDB", () => {
       SaleModel.deleteMany({}),
       BatchModel.deleteMany({}),
       InventoryModel.deleteMany({}),
+      ClothingVariantModel.deleteMany({}),
       ProductModel.deleteMany({}),
       StoreModel.deleteMany({}),
     ]);
@@ -237,5 +273,138 @@ describe("daily demand aggregation on real MongoDB", () => {
     });
     expect(ownStore.data).toHaveLength(1);
     expect(ownStore.data[0].dailyDemand[0].unitsSold).toBe("1");
+  });
+
+  it("aggregates clothing demand per variant using soldAt and falls back to missing or null soldAt", async () => {
+    const store = await StoreModel.create({
+      name: "Clothing demand store",
+      address: "Demand test address",
+      timezone: "UTC",
+      currency: "USD",
+      shopType: "clothing",
+    });
+    const product = await ProductModel.create({
+      store: store._id,
+      name: "T-shirt",
+      sku: `TEE-${new Types.ObjectId().toHexString()}`,
+      category: "Men",
+      baseUnit: "piece",
+      sellingPrice: decimal("10"),
+    });
+    const navyMedium = await ClothingVariantModel.create({
+      store: store._id,
+      product: product._id,
+      size: "M",
+      colour: "navy",
+      sku: `TEE-M-${new Types.ObjectId().toHexString()}`,
+    });
+    const whiteLarge = await ClothingVariantModel.create({
+      store: store._id,
+      product: product._id,
+      size: "L",
+      colour: "white",
+      sku: `TEE-L-${new Types.ObjectId().toHexString()}`,
+    });
+
+    await seedClothingSale(
+      store._id,
+      product._id,
+      navyMedium._id,
+      "2",
+      new Date("2026-05-02T10:00:00.000Z"),
+      new Date("2026-05-01T22:00:00.000Z"),
+    );
+    await seedClothingSale(
+      store._id,
+      product._id,
+      whiteLarge._id,
+      "3",
+      new Date("2026-05-01T10:00:00.000Z"),
+      new Date("2026-05-01T11:00:00.000Z"),
+    );
+    await seedClothingSale(
+      store._id,
+      product._id,
+      navyMedium._id,
+      "4",
+      new Date("2026-05-02T12:00:00.000Z"),
+    );
+    await seedClothingSale(
+      store._id,
+      product._id,
+      navyMedium._id,
+      "5",
+      new Date("2026-05-03T12:00:00.000Z"),
+      null,
+    );
+
+    const productHistory = await getDailyDemandHistory(store._id, {
+      startDate: "2026-05-01",
+      endDate: "2026-05-03",
+      productId: product._id.toHexString(),
+      page: 1,
+      limit: 50,
+    });
+    expect(productHistory.data[0].dailyDemand).toEqual([
+      { date: "2026-05-01", unitsSold: "5" },
+      { date: "2026-05-02", unitsSold: "4" },
+      { date: "2026-05-03", unitsSold: "5" },
+    ]);
+
+    const variantHistory = await getDailyDemandHistory(store._id, {
+      startDate: "2026-05-01",
+      endDate: "2026-05-03",
+      productId: product._id.toHexString(),
+      variantId: navyMedium._id.toHexString(),
+      page: 1,
+      limit: 1,
+    });
+    expect(variantHistory.data[0]).toMatchObject({
+      variantId: navyMedium._id.toHexString(),
+      variantSku: navyMedium.sku,
+      size: "M",
+      colour: "navy",
+    });
+    expect(variantHistory.data[0].dailyDemand.map((day) => day.unitsSold)).toEqual(["2", "4", "5"]);
+  });
+
+  it("does not return clothing variant history across store boundaries", async () => {
+    const requestingStore = await StoreModel.create({
+      name: "Requesting clothing store",
+      address: "Demand test address",
+      timezone: "UTC",
+      currency: "USD",
+      shopType: "clothing",
+    });
+    const store = await StoreModel.create({
+      name: "Isolated clothing store",
+      address: "Demand test address",
+      timezone: "UTC",
+      currency: "USD",
+      shopType: "clothing",
+    });
+    const product = await ProductModel.create({
+      store: store._id,
+      name: "Jacket",
+      sku: `JACKET-${new Types.ObjectId().toHexString()}`,
+      category: "Men",
+      baseUnit: "piece",
+      sellingPrice: decimal("20"),
+    });
+    const variant = await ClothingVariantModel.create({
+      store: store._id,
+      product: product._id,
+      size: "M",
+      colour: "black",
+      sku: `JACKET-M-${new Types.ObjectId().toHexString()}`,
+    });
+
+    await expect(getDailyDemandHistory(requestingStore._id, {
+      startDate: "2026-05-01",
+      endDate: "2026-05-02",
+      variantId: variant._id.toHexString(),
+      page: 1,
+      limit: 1,
+    })).rejects.toMatchObject({ statusCode: 404, code: "VARIANT_NOT_FOUND" });
   });
 });

@@ -17,6 +17,7 @@ export async function requestForecast(
 ) {
   const history = await getDailyDemandHistory(storeId, {
     productId: request.productId,
+    ...(request.variantId ? { variantId: request.variantId } : {}),
     startDate: request.startDate,
     endDate: request.endDate,
     page: 1,
@@ -28,7 +29,10 @@ export async function requestForecast(
   }
   if (
     productHistory.storeId.toLowerCase() !== storeId.toHexString().toLowerCase() ||
-    productHistory.productId.toLowerCase() !== request.productId.toLowerCase()
+    productHistory.productId.toLowerCase() !== request.productId.toLowerCase() ||
+    (request.variantId
+      ? productHistory.variantId?.toLowerCase() !== request.variantId.toLowerCase()
+      : productHistory.variantId !== undefined)
   ) {
     throw new ApiError(502, "INVALID_DEMAND_HISTORY", "Historical demand data did not match the requested scope.");
   }
@@ -39,6 +43,7 @@ export async function requestForecast(
     const forecastHistory = {
       storeId: productHistory.storeId,
       productId: productHistory.productId,
+      ...(productHistory.variantId ? { variantId: productHistory.variantId } : {}),
       unit: productHistory.unit,
       availability: productHistory.availability,
       availabilityNote: productHistory.availabilityNote,
@@ -74,6 +79,9 @@ export async function requestForecast(
       !parsed.success ||
       parsed.data.storeId.toLowerCase() !== storeId.toHexString().toLowerCase() ||
       parsed.data.productId.toLowerCase() !== request.productId.toLowerCase() ||
+      (request.variantId
+        ? parsed.data.variantId?.toLowerCase() !== request.variantId.toLowerCase()
+        : parsed.data.variantId != null) ||
       parsed.data.horizonDays !== request.horizonDays ||
       (parsed.data.status === "insufficient_history"
         ? parsed.data.forecasts.length !== 0

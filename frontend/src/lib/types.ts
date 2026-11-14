@@ -254,6 +254,11 @@ export type DemandSeries = {
   productId: string;
   productName: string;
   sku: string;
+  variantId?: string;
+  variantSku?: string;
+  size?: string;
+  colour?: string;
+  designIdentifier?: string;
   unit: string;
   isActive: boolean;
   availability: null;
@@ -279,6 +284,7 @@ export type ForecastPoint = {
 export type Forecast = {
   storeId: string;
   productId: string;
+  variantId?: string | null;
   unit: string;
   status: "ok" | "insufficient_history" | "zero_demand";
   method: string;
@@ -289,6 +295,10 @@ export type Forecast = {
   forecasts: ForecastPoint[];
   comparison: string;
   limitations: string[];
+  currentStock?: string;
+  lowStockThreshold?: string;
+  potentialShortage?: string | null;
+  suggestedRestockQuantity?: string | null;
 };
 
 export type RestockingRecommendation = {
@@ -307,6 +317,45 @@ export type RestockingRecommendation = {
   suggestedRestockQuantity: string | null;
   lowStockFallback: { threshold: string | null; triggered: boolean } | null;
   reason: string;
+};
+
+export type ClothingSellingTrend =
+  | "FAST_SELLING"
+  | "SLOW_SELLING"
+  | "STEADY"
+  | "INSUFFICIENT_HISTORY";
+
+export type ClothingRestockingRecommendation = {
+  productId: string;
+  productName: string;
+  productSku: string;
+  productTrend: ClothingSellingTrend;
+  variantId: string;
+  variantSku: string;
+  size: string;
+  colour: string;
+  designIdentifier?: string;
+  unit: "piece";
+  status:
+    | "NO_RESTOCK_NEEDED"
+    | "RESTOCK_RECOMMENDED"
+    | "INSUFFICIENT_HISTORY"
+    | "FORECAST_UNAVAILABLE";
+  currentStock: string;
+  lowStockThreshold: string;
+  lowStockTriggered: boolean;
+  forecastStatus: "ok" | "insufficient_history" | "zero_demand" | "unavailable";
+  forecastDemand: string | null;
+  safetyBuffer: string | null;
+  potentialShortage: string | null;
+  suggestedRestockQuantity: string | null;
+  reason: string;
+};
+
+export type ClothingRestockingResponse = {
+  data: ClothingRestockingRecommendation[];
+  pagination: { page: number; limit: number; totalItems: number; totalPages: number };
+  trendRule: string;
 };
 
 export type HealthResponse = {

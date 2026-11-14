@@ -5,6 +5,7 @@ import type {
   Batch,
   ClothingAnalytics,
   ClothingExchange,
+  ClothingRestockingResponse,
   ClothingReturn,
   ClothingSaleInput,
   ClothingVariant,
@@ -373,12 +374,14 @@ export const stocklyApi = {
     startDate: string;
     endDate: string;
     productId?: string;
+    variantId?: string;
     page?: number;
     limit?: number;
   }) =>
     request<DemandHistoryResponse>(`/demand/history${queryString(options)}`),
   forecast: (input: {
     productId: string;
+    variantId?: string;
     startDate: string;
     endDate: string;
     horizonDays?: number;
@@ -390,6 +393,14 @@ export const stocklyApi = {
     }),
   restocking: (options: { productId?: string; page?: number; limit?: number } = {}) =>
     request<Page<RestockingRecommendation>>(
+      `/restocking/recommendations${queryString({
+        productId: options.productId,
+        page: options.page ?? 1,
+        limit: options.limit ?? 20,
+      })}`,
+    ),
+  clothingRestocking: (options: { productId?: string; page?: number; limit?: number } = {}) =>
+    request<ClothingRestockingResponse>(
       `/restocking/recommendations${queryString({
         productId: options.productId,
         page: options.page ?? 1,

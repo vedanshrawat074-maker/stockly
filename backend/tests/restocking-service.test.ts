@@ -1,6 +1,9 @@
 import { Types } from "mongoose";
 import { describe, expect, it } from "vitest";
-import { buildRestockingRecommendation } from "../src/services/restocking-service";
+import {
+  buildClothingRestockingRecommendation,
+  buildRestockingRecommendation,
+} from "../src/services/restocking-service";
 import { forecastResponseSchema } from "../src/validators/forecast-validator";
 
 const product = {
@@ -14,6 +17,46 @@ function forecast(values: string[], status: "ok" | "zero_demand" | "insufficient
     storeId: "64b000000000000000000002",
     productId: product._id.toHexString(),
     unit: "kg",
+    status,
+    method: "rolling_average_7d",
+    horizonDays: Math.max(values.length, 1),
+    minimumHistoryDays: 14,
+    observedHistoryDays: 30,
+    historyThrough: "2026-10-26",
+    forecasts: values.map((predictedUnits, index) => {
+      const date = new Date(Date.UTC(2026, 9, 27 + index)).toISOString().slice(0, 10);
+      return { date, predictedUnits, previousWeekUnits: null };
+    }),
+    comparison: "Comparator only.",
+    limitations: ["Historical availability is unknown."],
+  });
+}
+
+const clothingProductId = new Types.ObjectId("64b000000000000000000003");
+const clothingVariantId = new Types.ObjectId("64b000000000000000000004");
+
+const clothingVariant = {
+  _id: clothingVariantId,
+  store: new Types.ObjectId("64b000000000000000000002"),
+  product: clothingProductId,
+  size: "M",
+  colour: "navy",
+  sku: "TEE-M-NAVY",
+  stockQuantity: Types.Decimal128.fromString("2"),
+  lowStockThreshold: Types.Decimal128.fromString("4"),
+  productName: "T-shirt",
+  productSku: "TEE",
+};
+
+function clothingForecast(
+  values: string[],
+  status: "ok" | "zero_demand" | "insufficient_history" = "ok",
+) {
+  return forecastResponseSchema.parse({
+    storeId: "64b000000000000000000002",
+    productId: clothingProductId.toHexString(),
+    variantId: clothingVariantId.toHexString(),
+    unit: "piece",
     status,
     method: "rolling_average_7d",
     horizonDays: Math.max(values.length, 1),
@@ -44,6 +87,61 @@ describe("restocking recommendation arithmetic", () => {
     expect(result.suggestedRestockQuantity).toBe("0.65");
     expect(result.reason).toContain("Target stock is 0.9 kg");
     expect(result.status).toBe("RESTOCK_RECOMMENDED");
+  });
+
+  it("calculates variant shortages and restock quantities from independent stock and thresholds", () => {
+    const result = buildClothingRestockingRecommendation({
+      variant: clothingVariant,
+      productTrend: "FAST_SELLING",
+      forecast: clothingForecast(Array(9).fill("0.5")),
+      planningHorizonDays: 7,
+      safetyBufferDays: 2,
+    });
+
+    expect(result).toMatchObject({
+      productId: clothingProductId.toHexString(),
+      variantId: clothingVariantId.toHexString(),
+      currentStock: "2",
+      lowStockThreshold: "4",
+      lowStockTriggered: true,
+      forecastDemand: "3.5",
+      safetyBuffer: "1",
+      potentialShortage: "1.5",
+      suggestedRestockQuantity: "2.5",
+      status: "RESTOCK_RECOMMENDED",
+      productTrend: "FAST_SELLING",
+    });
+  });
+
+  it("withholds restock quantities when clothing variant history is insufficient", () => {
+    const result = buildClothingRestockingRecommendation({
+      variant: clothingVariant,
+      productTrend: "INSUFFICIENT_HISTORY",
+      forecast: clothingForecast([], "insufficient_history"),
+      forecastFailure: "INSUFFICIENT_HISTORY",
+      planningHorizonDays: 7,
+      safetyBufferDays: 2,
+    });
+
+    expect(result.status).toBe("INSUFFICIENT_HISTORY");
+    expect(result.lowStockTriggered).toBe(true);
+    expect(result.potentialShortage).toBeNull();
+    expect(result.suggestedRestockQuantity).toBeNull();
+  });
+
+  it("uses the variant threshold as a target for zero demand without changing grocery behavior", () => {
+    const result = buildClothingRestockingRecommendation({
+      variant: { ...clothingVariant, stockQuantity: Types.Decimal128.fromString("0") },
+      productTrend: "SLOW_SELLING",
+      forecast: clothingForecast(Array(9).fill("0"), "zero_demand"),
+      planningHorizonDays: 7,
+      safetyBufferDays: 2,
+    });
+
+    expect(result.forecastDemand).toBe("0");
+    expect(result.potentialShortage).toBe("0");
+    expect(result.suggestedRestockQuantity).toBe("4");
+    expect(result.productTrend).toBe("SLOW_SELLING");
   });
 
   it("does not recommend restocking when stock exactly covers the target", () => {

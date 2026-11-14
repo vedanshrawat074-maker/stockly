@@ -28,7 +28,12 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "stockly-demand-forecast"}
 
 
-@app.post("/forecast", response_model=ForecastResponse, response_model_by_alias=True)
+@app.post(
+    "/forecast",
+    response_model=ForecastResponse,
+    response_model_by_alias=True,
+    response_model_exclude_none=True,
+)
 def forecast(request: ForecastRequest) -> ForecastResponse:
     return forecast_demand(request, MINIMUM_HISTORY_DAYS)
 
@@ -44,6 +49,11 @@ def evaluate(request: ForecastRequest) -> dict[str, object]:
     return {
         "storeId": request.history.store_id,
         "productId": request.history.product_id,
+        **(
+            {"variantId": request.history.variant_id}
+            if request.history.variant_id is not None
+            else {}
+        ),
         "unit": request.history.unit,
         "method": f"rolling_average_{request.rolling_window_days}d",
         **metrics,

@@ -4,6 +4,7 @@ import { decimalStringSchema, objectIdSchema } from "./common-validator";
 export const forecastRequestSchema = z
   .object({
     productId: objectIdSchema,
+    variantId: objectIdSchema.optional(),
     startDate: z.iso.date(),
     endDate: z.iso.date(),
     horizonDays: z.number().int().min(1).max(30).default(7),
@@ -35,6 +36,7 @@ export const forecastResponseSchema = z
   .object({
     storeId: objectIdSchema,
     productId: objectIdSchema,
+    variantId: objectIdSchema.nullable().optional(),
     unit: z.string(),
     status: z.enum(["ok", "insufficient_history", "zero_demand"]),
     method: z.string(),

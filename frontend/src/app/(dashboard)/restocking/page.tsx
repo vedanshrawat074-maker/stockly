@@ -3,7 +3,10 @@
 import { RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorState, LoadingState, PageHeading, Pagination, StatusBadge } from "@/components/dashboard-ui";
+import ClothingRestockingPage from "@/components/clothing-restocking";
+import { useAuth } from "@/components/auth-provider";
 import { ApiClientError, stocklyApi } from "@/lib/api-client";
+import { isClothingRestockingRoute } from "@/lib/business-views";
 import type { Product, RestockingRecommendation } from "@/lib/types";
 import { formatQuantity } from "@/lib/utils";
 
@@ -21,6 +24,13 @@ function recommendationStyle(status: RestockingRecommendation["status"]): { labe
 }
 
 export default function RestockingPage() {
+  const { currentStore } = useAuth();
+  return isClothingRestockingRoute(currentStore?.shopType)
+    ? <ClothingRestockingPage key={currentStore?.id ?? "clothing"} />
+    : <GroceryRestockingPage key={currentStore?.id ?? "grocery"} />;
+}
+
+function GroceryRestockingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<RestockingRecommendation[]>([]);
   const [productId, setProductId] = useState("");

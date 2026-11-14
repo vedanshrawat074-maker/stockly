@@ -72,6 +72,7 @@ def forecast_demand(
     return ForecastResponse(
         store_id=history.store_id,
         product_id=history.product_id,
+        variant_id=history.variant_id,
         unit=history.unit,
         status=status,
         method=f"rolling_average_{request.rolling_window_days}d",

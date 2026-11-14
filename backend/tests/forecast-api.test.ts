@@ -1,8 +1,14 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getDailyDemandHistory: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  getDailyDemandHistory: vi.fn(),
+  findVariant: vi.fn(),
+}));
 vi.mock("../src/services/demand-history-service", () => ({
   getDailyDemandHistory: mocks.getDailyDemandHistory,
+}));
+vi.mock("../src/models/clothing-variant", () => ({
+  ClothingVariantModel: { findOne: mocks.findVariant },
 }));
 
 import request from "supertest";
@@ -13,6 +19,7 @@ import { requestForecast } from "../src/services/forecast-service";
 
 const storeId = "64b000000000000000000001";
 const productId = "64b000000000000000000002";
+const variantId = "64b000000000000000000003";
 const app = createApp({
   nodeEnv: "development",
   mlServiceUrl: "http://ml.local",
@@ -65,6 +72,14 @@ describe("forecast integration API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getDailyDemandHistory.mockResolvedValue(demandHistory);
+    mocks.findVariant.mockReturnValue({
+      select: () => ({
+        lean: () => Promise.resolve({
+          stockQuantity: Types.Decimal128.fromString("3"),
+          lowStockThreshold: Types.Decimal128.fromString("2"),
+        }),
+      }),
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -102,6 +117,40 @@ describe("forecast integration API", () => {
       },
       horizonDays: 7,
     });
+  });
+
+  it("supports variant-scoped clothing forecasts with stock and restock details", async () => {
+    mocks.getDailyDemandHistory.mockResolvedValue({
+      ...demandHistory,
+      data: [{ ...demandHistory.data[0], variantId, variantSku: "TEE-M-NAVY", size: "M", colour: "navy" }],
+    });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...forecastBody, variantId }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await request(app)
+      .post("/api/forecasts")
+      .set("X-Store-Id", storeId)
+      .send({
+        productId,
+        variantId,
+        startDate: "2026-01-01",
+        endDate: "2026-01-30",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      variantId,
+      currentStock: "3",
+      lowStockThreshold: "2",
+      potentialShortage: "0.5",
+      suggestedRestockQuantity: "0.5",
+    });
+    expect(mocks.getDailyDemandHistory.mock.calls[0][1].variantId).toBe(variantId);
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).history.variantId).toBe(variantId);
   });
 
   it("rejects invalid date ranges, IDs, extra fields, and client store IDs", async () => {

@@ -8,6 +8,7 @@ export const demandHistoryQuerySchema = z
     startDate: dateOnlySchema,
     endDate: dateOnlySchema,
     productId: objectIdSchema.optional(),
+    variantId: objectIdSchema.optional(),
     page: z
       .string()
       .regex(/^[1-9]\d*$/)

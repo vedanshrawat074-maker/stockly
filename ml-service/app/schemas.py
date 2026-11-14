@@ -49,6 +49,7 @@ class ProductDemandHistory(BaseModel):
 
     store_id: ObjectIdString = Field(alias="storeId")
     product_id: ObjectIdString = Field(alias="productId")
+    variant_id: ObjectIdString | None = Field(default=None, alias="variantId")
     unit: str = Field(min_length=1, max_length=40)
     availability: AvailabilityInfo | None = None
     availability_note: str | None = Field(default=None, alias="availabilityNote")
@@ -91,6 +92,7 @@ class ForecastResponse(BaseModel):
 
     store_id: ObjectIdString = Field(alias="storeId")
     product_id: ObjectIdString = Field(alias="productId")
+    variant_id: ObjectIdString | None = Field(default=None, alias="variantId")
     unit: str
     status: Literal["ok", "insufficient_history", "zero_demand"]
     method: str

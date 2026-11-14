@@ -13,6 +13,7 @@ import {
 } from "vitest";
 import { createApp } from "../../src/app";
 import { BatchModel } from "../../src/models/batch";
+import { ClothingVariantModel } from "../../src/models/clothing-variant";
 import { InventoryModel } from "../../src/models/inventory";
 import { ProductModel } from "../../src/models/product";
 import { SaleModel } from "../../src/models/sale";
@@ -116,6 +117,72 @@ async function seedProduct(
   return product;
 }
 
+async function seedClothingProduct(store: Types.ObjectId) {
+  const product = await ProductModel.create({
+    store,
+    name: "Restock T-shirt",
+    sku: `TEE-${new Types.ObjectId().toHexString()}`,
+    category: "Men",
+    baseUnit: "piece",
+    sellingPrice: decimal("12.50"),
+    isActive: true,
+    createdAt: previousUtcDate(60),
+  });
+  const medium = await ClothingVariantModel.create({
+    store,
+    product: product._id,
+    size: "M",
+    colour: "navy",
+    sku: `TEE-M-${new Types.ObjectId().toHexString()}`,
+    stockQuantity: decimal("2"),
+    lowStockThreshold: decimal("4"),
+    createdAt: previousUtcDate(60),
+  });
+  const large = await ClothingVariantModel.create({
+    store,
+    product: product._id,
+    size: "L",
+    colour: "navy",
+    sku: `TEE-L-${new Types.ObjectId().toHexString()}`,
+    stockQuantity: decimal("20"),
+    lowStockThreshold: decimal("3"),
+    createdAt: previousUtcDate(60),
+  });
+  return { product, medium, large };
+}
+
+async function seedClothingSale(
+  store: Types.ObjectId,
+  product: Types.ObjectId,
+  variant: Types.ObjectId,
+  quantity: string,
+) {
+  const soldAt = previousUtcDate(1);
+  soldAt.setUTCHours(12, 0, 0, 0);
+  return SaleModel.create({
+    store,
+    saleIdentifier: `restock-clothing-${new Types.ObjectId().toHexString()}`,
+    businessType: "clothing",
+    soldAt,
+    lineItems: [{
+      product,
+      productName: "Restock T-shirt",
+      variant,
+      variantSku: `TEE-${new Types.ObjectId().toHexString()}`,
+      size: "M",
+      colour: "navy",
+      quantity: decimal(quantity),
+      unitPrice: decimal("12.50"),
+      lineTotal: decimal("12.50"),
+      allocations: [],
+    }],
+    totalAmount: decimal("12.50"),
+    status: "completed",
+    idempotencyKey: `restock-clothing-key-${new Types.ObjectId().toHexString()}`,
+    requestHash: "c".repeat(64),
+  });
+}
+
 async function seedBatch(
   store: Types.ObjectId,
   product: Types.ObjectId,
@@ -146,6 +213,7 @@ function mockForecast(statusOverride?: "unavailable" | "zero_demand") {
         history: {
           storeId: string;
           productId: string;
+          variantId?: string;
           unit: string;
           dailyDemand: Array<{ date: string; unitsSold: string }>;
         };
@@ -154,10 +222,13 @@ function mockForecast(statusOverride?: "unavailable" | "zero_demand") {
       };
       const history = body.history.dailyDemand;
       const insufficient = history.length < 14;
-      const allZero = statusOverride === "zero_demand";
       const recent = history.slice(-body.rollingWindowDays);
       const recentTotal = recent.reduce((sum, day) => sum + Number(day.unitsSold), 0);
-      const average = recent.length === 0 || recentTotal === 0 ? 0.1 : recentTotal / recent.length;
+      const allZero = statusOverride === "zero_demand" ||
+        (Boolean(body.history.variantId) && recentTotal === 0);
+      const average = recent.length === 0 || recentTotal === 0
+        ? (body.history.variantId ? 0 : 0.1)
+        : recentTotal / recent.length;
       const lastDate = new Date(`${history[history.length - 1].date}T00:00:00.000Z`);
       const forecasts = insufficient
         ? []
@@ -173,6 +244,7 @@ function mockForecast(statusOverride?: "unavailable" | "zero_demand") {
       return Response.json({
         storeId: body.history.storeId,
         productId: body.history.productId,
+        ...(body.history.variantId ? { variantId: body.history.variantId } : {}),
         unit: body.history.unit,
         status: insufficient ? "insufficient_history" : allZero ? "zero_demand" : "ok",
         method: `rolling_average_${body.rollingWindowDays}d`,
@@ -212,6 +284,7 @@ describe("restocking recommendations with real MongoDB", () => {
     await Promise.all([
       StoreModel.createIndexes(),
       ProductModel.createIndexes(),
+      ClothingVariantModel.createIndexes(),
       InventoryModel.createIndexes(),
       BatchModel.createIndexes(),
       SaleModel.createIndexes(),
@@ -232,6 +305,7 @@ describe("restocking recommendations with real MongoDB", () => {
         StockMovementModel.deleteMany({ store: { $in: stores } }),
         SaleModel.deleteMany({ store: { $in: stores } }),
         BatchModel.deleteMany({ store: { $in: stores } }),
+        ClothingVariantModel.deleteMany({ store: { $in: stores } }),
         InventoryModel.deleteMany({ store: { $in: stores } }),
         ProductModel.deleteMany({ store: { $in: stores } }),
         StoreModel.deleteMany({ _id: { $in: stores } }),
@@ -376,6 +450,53 @@ describe("restocking recommendations with real MongoDB", () => {
       suggestedRestockQuantity: "0",
       lowStockFallback: null,
     });
+  });
+
+  it("uses each clothing variant's gross demand and stock without reading grocery batches", async () => {
+    const store = await seedStore("Clothing restocking store");
+    await StoreModel.updateOne({ _id: store._id }, { $set: { shopType: "clothing" } });
+    const { product, medium, large } = await seedClothingProduct(store._id);
+    await seedBatch(store._id, product._id, "must-not-count-for-clothing", "100");
+    await seedClothingSale(store._id, product._id, medium._id, "7");
+    await seedClothingSale(store._id, product._id, large._id, "2");
+
+    const response = await request(app)
+      .get(`/api/restocking/recommendations?productId=${product._id}`)
+      .set("X-Store-Id", store._id.toHexString());
+
+    expect(response.status).toBe(200);
+    expect(response.body.trendRule).toContain("latest 7 days");
+    expect(response.body.data).toHaveLength(2);
+    const mediumRecommendation = response.body.data.find(
+      (item: { variantId: string }) => item.variantId === medium._id.toHexString(),
+    );
+    const largeRecommendation = response.body.data.find(
+      (item: { variantId: string }) => item.variantId === large._id.toHexString(),
+    );
+    expect(mediumRecommendation).toMatchObject({
+      currentStock: "2",
+      lowStockThreshold: "4",
+      forecastDemand: "7",
+      safetyBuffer: "2",
+      potentialShortage: "5",
+      suggestedRestockQuantity: "7",
+      lowStockTriggered: true,
+      status: "RESTOCK_RECOMMENDED",
+      productTrend: "FAST_SELLING",
+    });
+    expect(largeRecommendation).toMatchObject({
+      currentStock: "20",
+      lowStockThreshold: "3",
+      suggestedRestockQuantity: "0",
+      lowStockTriggered: false,
+      status: "NO_RESTOCK_NEEDED",
+    });
+    const forecastBodies = vi.mocked(fetch).mock.calls.map((call) =>
+      JSON.parse(String(call[1]?.body)) as { history: { variantId?: string } },
+    );
+    expect(new Set(forecastBodies.map((body) => body.history.variantId))).toEqual(
+      new Set([medium._id.toHexString(), large._id.toHexString()]),
+    );
   });
 
   it.skipIf(!LIVE_ML)("records test sales through the APIs and reaches live forecast and recommendation routes", async () => {

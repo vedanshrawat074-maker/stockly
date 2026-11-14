@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { usePathname } from "next/navigation";
 import ClothingAnalyticsPage from "@/components/clothing-analytics";
+import ClothingForecastPage from "@/components/clothing-forecast";
 import { useAuth } from "@/components/auth-provider";
 import { ErrorState, LoadingState, PageHeading, StatusBadge } from "@/components/dashboard-ui";
 import { ApiClientError, stocklyApi } from "@/lib/api-client";
@@ -29,6 +30,9 @@ function validDate(value: string): boolean {
 export default function AnalyticsPage() {
   const { currentStore } = useAuth();
   const pathname = usePathname();
+  if (currentStore?.shopType === "clothing" && pathname === "/forecasts") {
+    return <ClothingForecastPage />;
+  }
   return isClothingAnalyticsRoute(currentStore?.shopType, pathname)
     ? <ClothingAnalyticsPage />
     : <DemandAnalyticsPage />;

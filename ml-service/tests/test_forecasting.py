@@ -15,20 +15,25 @@ STORE_ID = "64b000000000000000000001"
 PRODUCT_ID = "64b000000000000000000002"
 
 
-def history(values: list[str], start: date = date(2026, 1, 1)) -> ProductDemandHistory:
-    return ProductDemandHistory.model_validate(
-        {
-            "storeId": STORE_ID,
-            "productId": PRODUCT_ID,
-            "unit": "kg",
-            "availability": None,
-            "availabilityNote": "Historical availability unknown.",
-            "dailyDemand": [
-                {"date": (start + timedelta(days=index)).isoformat(), "unitsSold": value}
-                for index, value in enumerate(values)
-            ],
-        }
-    )
+def history(
+    values: list[str],
+    start: date = date(2026, 1, 1),
+    variant_id: str | None = None,
+) -> ProductDemandHistory:
+    payload: dict[str, object] = {
+        "storeId": STORE_ID,
+        "productId": PRODUCT_ID,
+        "unit": "kg",
+        "availability": None,
+        "availabilityNote": "Historical availability unknown.",
+        "dailyDemand": [
+            {"date": (start + timedelta(days=index)).isoformat(), "unitsSold": value}
+            for index, value in enumerate(values)
+        ],
+    }
+    if variant_id is not None:
+        payload["variantId"] = variant_id
+    return ProductDemandHistory.model_validate(payload)
 
 
 def forecast_payload(values: list[str], **options: object) -> dict[str, object]:
@@ -57,6 +62,26 @@ def test_rolling_average_preserves_fractional_units_and_previous_week_values() -
     assert body["forecasts"][0]["previousWeekUnits"] == "0.1"
     assert body["forecasts"][0]["date"] == "2026-01-15"
     assert any("not a trained" in note for note in body["limitations"])
+    assert "variantId" not in body
+
+
+def test_variant_identity_is_echoed_and_grocery_identity_remains_omitted() -> None:
+    variant_id = "64b000000000000000000003"
+    variant_history = history(["1"] * 14, variant_id=variant_id)
+    request = ForecastRequest.model_validate(
+        {"history": variant_history.model_dump(by_alias=True, mode="json")}
+    )
+    result = forecast_demand(request, configured_minimum_history_days=14)
+    assert result.model_dump(by_alias=True, mode="json", exclude_none=True)["variantId"] == variant_id
+
+    response = client.post(
+        "/evaluate",
+        json={
+            "history": variant_history.model_dump(by_alias=True, mode="json"),
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["variantId"] == variant_id
 
 
 def test_rolling_average_preserves_fractional_quantity_with_bounded_precision() -> None:

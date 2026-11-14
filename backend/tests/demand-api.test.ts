@@ -45,6 +45,26 @@ describe("demand history API", () => {
     });
   });
 
+  it("accepts an optional variant filter and passes it with the authenticated store context", async () => {
+    serviceMock.getDailyDemandHistory.mockResolvedValue({
+      data: [],
+      period: { startDate: "2026-10-27", endDate: "2026-10-27", timezone: "UTC" },
+      pagination: { page: 1, limit: 50, totalItems: 0, totalPages: 0 },
+    });
+    const variantId = "64b000000000000000000003";
+    const response = await request(app)
+      .get(`/api/demand/history?startDate=2026-10-27&endDate=2026-10-27&variantId=${variantId}`)
+      .set("X-Store-Id", storeId);
+
+    expect(response.status).toBe(200);
+    expect(serviceMock.getDailyDemandHistory.mock.calls[0][1]).toMatchObject({
+      variantId,
+      page: 1,
+      limit: 50,
+    });
+    expect(serviceMock.getDailyDemandHistory.mock.calls[0][0].toHexString()).toBe(storeId);
+  });
+
   it("rejects malformed, oversized, inverted or unknown query parameters", async () => {
     const headers = { "X-Store-Id": storeId };
     const invalid = await Promise.all([
