@@ -7,6 +7,7 @@ import { ApiClientError, stocklyApi } from "@/lib/api-client";
 import type { Batch, InventoryRecord, Product } from "@/lib/types";
 import { formatAmount, formatDate, formatQuantity } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
+import ClothingInventoryPage from "@/components/clothing-inventory";
 
 type ProductFormState = {
   name: string;
@@ -22,6 +23,13 @@ function errorText(error: unknown): string {
 }
 
 export default function InventoryPage() {
+  const { currentStore } = useAuth();
+  return currentStore?.shopType === "clothing"
+    ? <ClothingInventoryPage key={currentStore.id} />
+    : <GroceryInventoryPage />;
+}
+
+function GroceryInventoryPage() {
   const { currentStore } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [inventory, setInventory] = useState<InventoryRecord[]>([]);

@@ -3,6 +3,8 @@ import { ProductModel } from "../models/product";
 import { InventoryModel } from "../models/inventory";
 import { BatchModel } from "../models/batch";
 import { StockMovementModel } from "../models/stock-movement";
+import { ClothingVariantModel } from "../models/clothing-variant";
+import { clothingCategories } from "../validators/clothing-validator";
 import { ApiError } from "../utils/api-error";
 import { runInTransaction } from "./transaction-service";
 
@@ -76,6 +78,18 @@ export async function updateProduct(
   productId: Types.ObjectId,
   input: Partial<ProductInput>,
 ) {
+  if (
+    input.category !== undefined &&
+    !clothingCategories.some((category) => category === input.category) &&
+    await ClothingVariantModel.exists({ store: storeId, product: productId })
+  ) {
+    throw new ApiError(
+      409,
+      "CLOTHING_CATEGORY_REQUIRED",
+      "A product with clothing variants must keep a clothing category.",
+    );
+  }
+
   const update = {
     ...input,
     ...(input.sellingPrice === undefined
@@ -106,8 +120,12 @@ export async function deleteProduct(storeId: Types.ObjectId, productId: Types.Ob
       inventoryReference || batchReference
         ? null
         : await StockMovementModel.exists(referenceFilter).session(session);
+    const clothingVariantReference =
+      inventoryReference || batchReference || movementReference
+        ? null
+        : await ClothingVariantModel.exists(referenceFilter).session(session);
 
-    if (inventoryReference || batchReference || movementReference) {
+    if (inventoryReference || batchReference || movementReference || clothingVariantReference) {
       product.isActive = false;
       await product.save({ session });
       return { id: productId.toHexString(), action: "deactivated" as const };

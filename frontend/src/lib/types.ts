@@ -24,6 +24,29 @@ export type Product = {
   updatedAt: string;
 };
 
+export type ClothingVariant = {
+  _id: string;
+  store: string;
+  product: string;
+  size: string;
+  colour: string;
+  designIdentifier?: string;
+  sku: string;
+  stockQuantity: string;
+  lowStockThreshold: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClothingVariantInput = {
+  size: string;
+  colour: string;
+  designIdentifier?: string;
+  sku: string;
+  stockQuantity?: string;
+  lowStockThreshold?: string;
+};
+
 export type InventoryRecord = {
   _id: string;
   store: string;

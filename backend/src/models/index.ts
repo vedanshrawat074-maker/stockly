@@ -1,5 +1,6 @@
 export { AlertModel, alertSeverities, alertStatuses, alertTypes, type Alert, type AlertSeverity, type AlertStatus, type AlertType } from "./alert";
 export { BatchModel, type Batch } from "./batch";
+export { ClothingVariantModel, type ClothingVariant } from "./clothing-variant";
 export { InventoryModel, type Inventory } from "./inventory";
 export { ProductModel, type Product } from "./product";
 export { SaleModel, saleStatuses, type Sale, type SaleLineItem, type SaleStatus } from "./sale";

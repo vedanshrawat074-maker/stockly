@@ -18,6 +18,8 @@ import forecastRoutes from "./routes/forecast-routes";
 import restockingRoutes from "./routes/restocking-routes";
 import storeRoutes from "./routes/store-routes";
 import { csrfProtection } from "./middleware/authentication";
+import clothingRoutes from "./routes/clothing-routes";
+import { requireShopType } from "./middleware/require-shop-type";
 
 export type AppOptions = {
   corsOrigins?: string[];
@@ -102,6 +104,7 @@ export function createApp(options: AppOptions = {}) {
   app.use("/api/auth", sessionMiddleware, csrfMiddleware, createAuthRoutes(allowedOrigins));
   app.use("/api/stores", sessionMiddleware, csrfMiddleware, storeRoutes);
   app.use("/api/products", ...storeScoped, productRoutes);
+  app.use("/api/clothing", ...storeScoped, requireShopType("clothing"), clothingRoutes);
   app.use("/api/inventory", ...storeScoped, inventoryRoutes);
   app.use("/api/sales", ...storeScoped, saleRoutes);
   app.use("/api/alerts", ...storeScoped, alertRoutes);

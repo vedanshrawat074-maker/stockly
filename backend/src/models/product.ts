@@ -10,6 +10,7 @@ export interface Product {
   baseUnit: string;
   sellingPrice: Types.Decimal128;
   isActive: boolean;
+  clothingVariantRevision?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -31,6 +32,7 @@ const productSchema = new Schema<Product>(
       },
     },
     isActive: { type: Boolean, required: true, default: true },
+    clothingVariantRevision: { type: Number, min: 0, select: false },
   },
   { timestamps: true },
 );

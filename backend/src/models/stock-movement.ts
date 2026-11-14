@@ -16,6 +16,7 @@ export interface StockMovement {
   store: Types.ObjectId;
   product: Types.ObjectId;
   batch?: Types.ObjectId;
+  variant?: Types.ObjectId;
   sale?: Types.ObjectId;
   movementType: MovementType;
   quantityDelta: Types.Decimal128;
@@ -29,6 +30,7 @@ const stockMovementSchema = new Schema<StockMovement>(
     store: { type: Schema.Types.ObjectId, ref: "Store", required: true },
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     batch: { type: Schema.Types.ObjectId, ref: "Batch" },
+    variant: { type: Schema.Types.ObjectId, ref: "ClothingVariant" },
     sale: { type: Schema.Types.ObjectId, ref: "Sale" },
     movementType: {
       type: String,

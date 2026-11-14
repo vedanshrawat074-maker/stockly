@@ -3,6 +3,8 @@ import type {
   AuthResponse,
   AuthUser,
   Batch,
+  ClothingVariant,
+  ClothingVariantInput,
   CreateStoreInput,
   DemandHistoryResponse,
   Forecast,
@@ -169,6 +171,43 @@ export const stocklyApi = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  createClothingProduct: (input: {
+    name: string;
+    sku: string;
+    barcode?: string;
+    category: "Men" | "Women" | "Kids" | "Accessories";
+    sellingPrice: string;
+    variants: ClothingVariantInput[];
+  }) =>
+    request<{ data: { product: Product; variants: ClothingVariant[] } }>("/clothing/products", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  clothingVariants: (productId: string) =>
+    request<{ data: ClothingVariant[] }>(
+      `/clothing/products/${encodeURIComponent(productId)}/variants`,
+    ),
+  createClothingVariant: (productId: string, input: ClothingVariantInput) =>
+    request<{ data: ClothingVariant }>(
+      `/clothing/products/${encodeURIComponent(productId)}/variants`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  updateClothingVariant: (
+    variantId: string,
+    input: Partial<Pick<ClothingVariantInput, "size" | "colour" | "designIdentifier" | "sku" | "lowStockThreshold">>,
+  ) =>
+    request<{ data: ClothingVariant }>(`/clothing/variants/${encodeURIComponent(variantId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  adjustClothingVariantStock: (
+    variantId: string,
+    input: { quantityDelta: string; reason: string },
+  ) =>
+    request<{ data: ClothingVariant }>(
+      `/clothing/variants/${encodeURIComponent(variantId)}/adjustments`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
   updateProduct: (
     productId: string,
     input: Partial<{
