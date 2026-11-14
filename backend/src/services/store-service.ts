@@ -1,6 +1,6 @@
 import mongoose, { Types } from "mongoose";
 import { membershipRoles, StoreMembershipModel, type MembershipRole } from "../models/store-membership";
-import { StoreModel } from "../models/store";
+import { StoreModel, type ShopType } from "../models/store";
 import { ApiError } from "../utils/api-error";
 
 export type StoreSummary = {
@@ -9,12 +9,13 @@ export type StoreSummary = {
   address: string;
   timezone: string;
   currency: string;
+  shopType: ShopType;
   role: MembershipRole;
 };
 
 export async function createStoreForOwner(
   userId: Types.ObjectId,
-  input: { name: string; address: string; timezone: string; currency: string },
+  input: { name: string; address: string; timezone: string; currency: string; shopType?: ShopType },
 ) {
   const session = await mongoose.startSession();
   let createdStore: InstanceType<typeof StoreModel> | undefined;
@@ -40,7 +41,16 @@ export async function listStoresForUser(userId: Types.ObjectId): Promise<StoreSu
     status: "ACTIVE",
     role: { $in: membershipRoles },
   })
-    .populate<{ store: { _id: Types.ObjectId; name: string; address: string; timezone: string; currency: string } | null }>("store")
+    .populate<{
+      store: {
+        _id: Types.ObjectId;
+        name: string;
+        address: string;
+        timezone: string;
+        currency: string;
+        shopType?: ShopType;
+      } | null;
+    }>("store")
     .lean();
   return memberships.flatMap((membership) => {
     if (!membership.store) return [];
@@ -50,6 +60,7 @@ export async function listStoresForUser(userId: Types.ObjectId): Promise<StoreSu
       address: membership.store.address,
       timezone: membership.store.timezone,
       currency: membership.store.currency,
+      shopType: membership.store.shopType ?? "grocery",
       role: membership.role,
     }];
   });
@@ -75,6 +86,7 @@ export async function getAuthorizedStore(
     address: store.address,
     timezone: store.timezone,
     currency: store.currency,
+    shopType: store.shopType ?? "grocery",
     role: membership.role,
   };
 }

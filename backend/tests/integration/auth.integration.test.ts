@@ -137,19 +137,34 @@ describe("authentication and store membership on local MongoDB rs0", () => {
     const firstStoreId = firstStoreResponse.body.data.id as string;
     ownedStoreIds.push(new Types.ObjectId(firstStoreId));
     expect(firstStoreResponse.body.data.role).toBe("OWNER");
+    expect(firstStoreResponse.body.data.shopType).toBe("grocery");
     expect(await StoreMembershipModel.findOne({ user: owner!._id, store: firstStoreId, role: "OWNER" })).not.toBeNull();
 
     const secondStoreResponse = await origin(ownerAgent.post("/api/stores"))
       .set("X-CSRF-Token", csrfToken)
-      .send({ name: "Owner Store Two", address: "Address two", timezone: "UTC", currency: "USD" });
+      .send({
+        name: "Owner Store Two",
+        address: "Address two",
+        timezone: "UTC",
+        currency: "USD",
+        shopType: "clothing",
+      });
     expect(secondStoreResponse.status).toBe(201);
     const secondStoreId = secondStoreResponse.body.data.id as string;
     ownedStoreIds.push(new Types.ObjectId(secondStoreId));
+
+    await StoreModel.collection.updateOne(
+      { _id: new Types.ObjectId(firstStoreId) },
+      { $unset: { shopType: "" } },
+    );
     const listedStores = await ownerAgent.get("/api/stores");
     expect(listedStores.status).toBe(200);
     expect(listedStores.body.data.map((store: { id: string }) => store.id)).toEqual(
       expect.arrayContaining([firstStoreId, secondStoreId]),
     );
+    expect(listedStores.body.data.find((store: { id: string }) => store.id === firstStoreId).shopType).toBe("grocery");
+    expect(listedStores.body.data.find((store: { id: string }) => store.id === secondStoreId).shopType).toBe("clothing");
+    expect((await ownerAgent.get("/api/stores/current")).body.data.shopType).toBe("clothing");
 
     const firstProduct = await ProductModel.create({
       store: new Types.ObjectId(firstStoreId),
@@ -174,6 +189,7 @@ describe("authentication and store membership on local MongoDB rs0", () => {
       .set("X-CSRF-Token", csrfToken)
       .send({ storeId: firstStoreId })
       .expect(200);
+    expect((await ownerAgent.get("/api/stores/current")).body.data.shopType).toBe("grocery");
 
     const scopedList = await ownerAgent.get("/api/products").set("X-Store-Id", secondStoreId);
     expect(scopedList.status).toBe(200);

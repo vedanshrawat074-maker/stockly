@@ -3,6 +3,7 @@ import type {
   AuthResponse,
   AuthUser,
   Batch,
+  CreateStoreInput,
   DemandHistoryResponse,
   Forecast,
   HealthResponse,
@@ -131,7 +132,7 @@ export const stocklyApi = {
   stores: {
     list: () => request<{ data: StoreSummary[] }>("/stores"),
     current: () => request<{ data: StoreSummary | null }>("/stores/current"),
-    create: (input: { name: string; address: string; timezone: string; currency: string }) =>
+    create: (input: CreateStoreInput) =>
       request<{ data: StoreSummary }>("/stores", { method: "POST", body: JSON.stringify(input) }),
     select: (storeId: string) =>
       request<{ data: StoreSummary }>("/stores/current", {

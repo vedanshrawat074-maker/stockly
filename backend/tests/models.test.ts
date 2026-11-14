@@ -31,12 +31,22 @@ function hasIndex(
 
 describe("initial Mongoose models", () => {
   it("validates store fields and currency format", async () => {
+    const groceryStore = new StoreModel({
+      name: " Corner Shop ",
+      address: "1 Main Street",
+      timezone: "Europe/London",
+      currency: "gbp",
+    });
+    await expect(groceryStore.validate()).resolves.toBeUndefined();
+    expect(groceryStore.shopType).toBe("grocery");
+
     await expect(
       new StoreModel({
-        name: " Corner Shop ",
-        address: "1 Main Street",
+        name: "Clothing Store",
+        address: "2 Main Street",
         timezone: "Europe/London",
-        currency: "gbp",
+        currency: "GBP",
+        shopType: "clothing",
       }).validate(),
     ).resolves.toBeUndefined();
 
@@ -46,6 +56,16 @@ describe("initial Mongoose models", () => {
         address: "1 Main Street",
         timezone: "Europe/London",
         currency: "US",
+      }).validate(),
+    ).rejects.toThrow();
+
+    await expect(
+      new StoreModel({
+        name: "Invalid Store",
+        address: "3 Main Street",
+        timezone: "Europe/London",
+        currency: "GBP",
+        shopType: "restaurant",
       }).validate(),
     ).rejects.toThrow();
   });

@@ -180,8 +180,14 @@ export type StoreSummary = {
   address: string;
   timezone: string;
   currency: string;
+  shopType: "grocery" | "clothing";
   role: "OWNER" | "STAFF";
 };
+
+export type CreateStoreInput = Pick<
+  StoreSummary,
+  "name" | "address" | "timezone" | "currency" | "shopType"
+>;
 
 export type ApiErrorPayload = {
   error: {

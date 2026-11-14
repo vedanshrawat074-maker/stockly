@@ -61,6 +61,7 @@ export const createStoreHandler: RequestHandler = async (request, response) => {
       address: store.address,
       timezone: store.timezone,
       currency: store.currency,
+      shopType: store.shopType ?? "grocery",
       role: "OWNER",
     },
   });

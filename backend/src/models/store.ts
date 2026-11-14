@@ -1,10 +1,14 @@
 import { model, Schema, type Types } from "mongoose";
 
+export const shopTypes = ["grocery", "clothing"] as const;
+export type ShopType = (typeof shopTypes)[number];
+
 export interface Store {
   name: string;
   address: string;
   timezone: string;
   currency: string;
+  shopType?: ShopType;
 }
 
 const storeSchema = new Schema<Store>(
@@ -20,6 +24,7 @@ const storeSchema = new Schema<Store>(
       maxlength: 3,
       match: /^[A-Z]{3}$/,
     },
+    shopType: { type: String, enum: shopTypes, required: true, default: "grocery" },
   },
   { timestamps: true },
 );

@@ -34,17 +34,35 @@ describe("authentication and store request validation", () => {
   });
 
   it("requires a valid time zone, currency code, and ObjectId when creating/selecting stores", () => {
-    expect(createStoreSchema.safeParse({
+    const groceryStore = createStoreSchema.safeParse({
       name: "Local shop",
       address: "1 Main Street",
       timezone: "Asia/Kolkata",
       currency: "inr",
-    }).success).toBe(true);
+    });
+    expect(groceryStore.success).toBe(true);
+    if (groceryStore.success) expect(groceryStore.data.shopType).toBe("grocery");
+
+    expect(createStoreSchema.parse({
+      name: "Clothing shop",
+      address: "2 Main Street",
+      timezone: "Asia/Kolkata",
+      currency: "inr",
+      shopType: "clothing",
+    }).shopType).toBe("clothing");
+
     expect(createStoreSchema.safeParse({
       name: "Shop",
       address: "Street",
       timezone: "not-a-timezone",
       currency: "US",
+    }).success).toBe(false);
+    expect(createStoreSchema.safeParse({
+      name: "Shop",
+      address: "Street",
+      timezone: "UTC",
+      currency: "USD",
+      shopType: "restaurant",
     }).success).toBe(false);
     expect(selectStoreSchema.safeParse({ storeId: "invalid" }).success).toBe(false);
   });

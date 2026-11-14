@@ -1,38 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { AuthFrame } from "@/components/auth-frame";
 import { OnboardingGuard } from "@/components/auth-guards";
 import { useAuth } from "@/components/auth-provider";
-import { ApiClientError, stocklyApi } from "@/lib/api-client";
+import { CreateShopForm } from "@/components/create-shop-form";
+import { ApiClientError } from "@/lib/api-client";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { refresh, logout, stores, selectStore } = useAuth();
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [timezone, setTimezone] = useState("Asia/Kolkata");
-  const [currency, setCurrency] = useState("INR");
+  const { logout, stores, selectStore } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [signOutError, setSignOutError] = useState<string | null>(null);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await stocklyApi.stores.create({ name, address, timezone, currency });
-      await refresh();
-      router.replace("/dashboard");
-    } catch (createError) {
-      setError(createError instanceof ApiClientError ? createError.message : "The backend API could not be reached.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const selectExistingStore = async () => {
     if (!selectedStoreId) return;
@@ -78,26 +60,9 @@ export default function OnboardingPage() {
             <button type="button" className="button-secondary mt-3 w-full justify-center" disabled={submitting || !selectedStoreId} onClick={() => void selectExistingStore()}>Continue with selected store</button>
           </div>
         )}
-        <form className="space-y-4" onSubmit={(event) => void submit(event)}>
-          <label className="block text-sm font-medium text-slate-700">Store name
-            <input className="field mt-1.5" required minLength={1} maxLength={120} value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-          <label className="block text-sm font-medium text-slate-700">Address
-            <input className="field mt-1.5" required minLength={1} maxLength={500} autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm font-medium text-slate-700">Time zone
-              <input className="field mt-1.5" required maxLength={100} placeholder="Asia/Kolkata" value={timezone} onChange={(event) => setTimezone(event.target.value)} />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">Currency code
-              <input className="field mt-1.5 uppercase" required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} />
-            </label>
-          </div>
-          <p className="text-xs leading-5 text-slate-500">Enter an IANA timezone such as Asia/Kolkata and a three-letter ISO currency code. These settings affect date handling and display.</p>
-          {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-          {signOutError && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{signOutError}</p>}
-          <button className="button-primary w-full justify-center" type="submit" disabled={submitting}>{submitting ? "Creating store…" : "Create store"}</button>
-        </form>
+        <CreateShopForm onCreated={() => router.replace("/dashboard")} buttonLabel="Create store" />
+        {error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {signOutError && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{signOutError}</p>}
       </AuthFrame>
     </OnboardingGuard>
   );

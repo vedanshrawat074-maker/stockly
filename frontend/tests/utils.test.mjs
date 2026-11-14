@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { formatAmount, formatDate, formatQuantity, summarizeSaleProducts } from "../src/lib/utils.ts";
+import { normalizeCreateStoreInput } from "../src/lib/store-form.ts";
 
 describe("Stockly display formatting", () => {
   it("formats INR with Indian grouping and the currency symbol", () => {
@@ -44,6 +45,24 @@ describe("Stockly display formatting", () => {
     assert.deepEqual(summarizeSaleProducts([{ quantity: "2" }]), {
       items: [{ name: "Product name unavailable", quantity: "2" }],
       moreCount: 0,
+    });
+  });
+});
+
+describe("shop creation form input", () => {
+  it("normalizes shop fields and preserves the selected business type", () => {
+    assert.deepEqual(normalizeCreateStoreInput({
+      name: "  Main Street Shop ",
+      address: "  1 Main Street ",
+      timezone: " Asia/Kolkata ",
+      currency: " inr ",
+      shopType: "clothing",
+    }), {
+      name: "Main Street Shop",
+      address: "1 Main Street",
+      timezone: "Asia/Kolkata",
+      currency: "INR",
+      shopType: "clothing",
     });
   });
 });

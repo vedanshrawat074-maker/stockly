@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   PackageCheck,
+  Plus,
   ReceiptText,
   Store,
   X,
@@ -199,6 +200,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <p className="truncate text-sm font-semibold text-slate-800">{user?.name}</p>
                   <p className="mt-0.5 truncate text-xs text-slate-500">{user?.email}</p>
                 </div>
+                <Link href="/shops/new" className="profile-action">
+                  <Plus size={15} aria-hidden="true" />
+                  Create New Shop
+                </Link>
                 <button type="button" className="profile-action" onClick={() => void signOut()}>
                   <LogOut size={15} aria-hidden="true" />
                   Sign out

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ApiClientError, setCsrfToken, stocklyApi } from "@/lib/api-client";
-import type { AuthUser, StoreSummary } from "@/lib/types";
+import type { AuthUser, CreateStoreInput, StoreSummary } from "@/lib/types";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated" | "error";
 type AuthContextValue = {
@@ -12,6 +12,7 @@ type AuthContextValue = {
   currentStore: StoreSummary | null;
   error: string | null;
   refresh: () => Promise<void>;
+  createStore: (input: CreateStoreInput) => Promise<StoreSummary>;
   selectStore: (storeId: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -79,6 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refresh();
   }, [refresh]);
 
+  const createStore = useCallback(async (input: CreateStoreInput) => {
+    const result = await stocklyApi.stores.create(input);
+    await refresh();
+    return result.data;
+  }, [refresh]);
+
   const logout = useCallback(async () => {
     await stocklyApi.auth.logout();
     setCsrfToken(null);
@@ -89,8 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, user, stores, currentStore, error, refresh, selectStore, logout }),
-    [status, user, stores, currentStore, error, refresh, selectStore, logout],
+    () => ({ status, user, stores, currentStore, error, refresh, createStore, selectStore, logout }),
+    [status, user, stores, currentStore, error, refresh, createStore, selectStore, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
