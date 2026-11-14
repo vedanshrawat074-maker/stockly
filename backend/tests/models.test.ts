@@ -194,4 +194,34 @@ describe("initial Mongoose models", () => {
   it("indexes completed sales history by store and creation date", () => {
     expect(hasIndex(SaleModel.schema, { store: 1, status: 1, createdAt: 1 })).toBe(true);
   });
+
+  it("persists and validates returned quantities on sale lines", async () => {
+    const sale = new SaleModel({
+      store,
+      saleIdentifier: "clothing-sale",
+      lineItems: [{
+        product,
+        variant: new Types.ObjectId(),
+        variantSku: "TEE-M-BLACK",
+        size: "M",
+        colour: "Black",
+        quantity: decimal("2"),
+        unitPrice: decimal("10"),
+        lineTotal: decimal("20"),
+        returnedQuantity: decimal("1"),
+        allocations: [],
+      }],
+      totalAmount: decimal("20"),
+      status: "completed",
+      businessType: "clothing",
+      idempotencyKey: "clothing-sale-key",
+      requestHash: "a".repeat(64),
+    });
+
+    await expect(sale.validate()).resolves.toBeUndefined();
+    expect(sale.lineItems[0].returnedQuantity?.toString()).toBe("1");
+
+    sale.lineItems[0].returnedQuantity = decimal("-1");
+    await expect(sale.validate()).rejects.toThrow();
+  });
 });

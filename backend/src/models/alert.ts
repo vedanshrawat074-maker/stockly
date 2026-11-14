@@ -1,4 +1,5 @@
 import { model, Schema, Types } from "mongoose";
+import { isNonNegativeDecimal } from "./decimal-validation";
 
 export const alertTypes = ["LOW_STOCK", "EXPIRING_SOON", "EXPIRED_STOCK"] as const;
 export type AlertType = (typeof alertTypes)[number];
@@ -14,6 +15,13 @@ export interface Alert {
   type: AlertType;
   product: Types.ObjectId;
   batch?: Types.ObjectId;
+  variant?: Types.ObjectId;
+  productName?: string;
+  variantSku?: string;
+  size?: string;
+  colour?: string;
+  availableStock?: Types.Decimal128;
+  lowStockThreshold?: Types.Decimal128;
   status: AlertStatus;
   severity: AlertSeverity;
   deduplicationKey: string;
@@ -30,6 +38,19 @@ const alertSchema = new Schema<Alert>(
     type: { type: String, enum: alertTypes, required: true },
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     batch: { type: Schema.Types.ObjectId, ref: "Batch" },
+    variant: { type: Schema.Types.ObjectId, ref: "ClothingVariant" },
+    productName: { type: String, trim: true, maxlength: 160 },
+    variantSku: { type: String, trim: true, uppercase: true, maxlength: 64 },
+    size: { type: String, trim: true, uppercase: true, maxlength: 40 },
+    colour: { type: String, trim: true, lowercase: true, maxlength: 60 },
+    availableStock: {
+      type: Schema.Types.Decimal128,
+      validate: { validator: isNonNegativeDecimal, message: "Available stock must be nonnegative." },
+    },
+    lowStockThreshold: {
+      type: Schema.Types.Decimal128,
+      validate: { validator: isNonNegativeDecimal, message: "Low-stock threshold must be nonnegative." },
+    },
     status: { type: String, enum: alertStatuses, required: true, default: "ACTIVE" },
     severity: { type: String, enum: alertSeverities, required: true },
     deduplicationKey: { type: String, required: true, trim: true, maxlength: 200 },

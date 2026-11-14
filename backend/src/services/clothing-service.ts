@@ -6,6 +6,7 @@ import { clothingCategories } from "../validators/clothing-validator";
 import { ApiError } from "../utils/api-error";
 import { compareDecimals, negateDecimal } from "../utils/decimal-arithmetic";
 import { runInTransaction } from "./transaction-service";
+import { reconcileClothingVariantAlertInTransaction } from "./alert-generation-service";
 
 type ClothingProductInput = {
   name: string;
@@ -84,9 +85,12 @@ export async function createClothingProduct(storeId: Types.ObjectId, input: Clot
             product: product._id,
             ...normalizedVariant(variant),
           })),
-          { session },
+          { session, ordered: true },
         )
       : [];
+    for (const variant of variants) {
+        await reconcileClothingVariantAlertInTransaction(storeId, variant._id, session);
+    }
     return { product, variants };
   });
 }
@@ -113,6 +117,7 @@ export async function createClothingVariant(
       }],
       { session },
     );
+    await reconcileClothingVariantAlertInTransaction(storeId, variant._id, session);
     return variant;
   });
 }
@@ -129,12 +134,6 @@ export async function updateClothingVariant(
   variantId: Types.ObjectId,
   input: Partial<ClothingVariantInput>,
 ) {
-  const existing = await ClothingVariantModel.findOne({ _id: variantId, store: storeId })
-    .select({ product: 1 })
-    .lean();
-  if (!existing) throw new ApiError(404, "VARIANT_NOT_FOUND", "Clothing variant was not found.");
-  await assertClothingProduct(storeId, existing.product);
-
   const update = {
     ...(input.size === undefined ? {} : { size: input.size.trim().toUpperCase() }),
     ...(input.colour === undefined ? {} : { colour: input.colour.trim().toLowerCase() }),
@@ -146,14 +145,24 @@ export async function updateClothingVariant(
       ? {}
       : { lowStockThreshold: Types.Decimal128.fromString(input.lowStockThreshold) }),
   };
-  const variant = await ClothingVariantModel.findOneAndUpdate(
-    { _id: variantId, store: storeId },
-    { $set: update },
-    { new: true, runValidators: true },
-  ).lean();
+  return runInTransaction(async (session) => {
+    const existing = await ClothingVariantModel.findOne({ _id: variantId, store: storeId })
+      .select({ product: 1 })
+      .session(session)
+      .lean();
+    if (!existing) throw new ApiError(404, "VARIANT_NOT_FOUND", "Clothing variant was not found.");
+    await assertClothingProduct(storeId, existing.product, session);
 
-  if (!variant) throw new ApiError(404, "VARIANT_NOT_FOUND", "Clothing variant was not found.");
-  return variant;
+    const variant = await ClothingVariantModel.findOneAndUpdate(
+      { _id: variantId, store: storeId },
+      { $set: update },
+      { new: true, runValidators: true, session },
+    ).lean();
+
+    if (!variant) throw new ApiError(404, "VARIANT_NOT_FOUND", "Clothing variant was not found.");
+    await reconcileClothingVariantAlertInTransaction(storeId, variantId, session);
+    return variant;
+  });
 }
 
 export async function adjustClothingVariantStock(
@@ -197,6 +206,7 @@ export async function adjustClothingVariantStock(
       }],
       { session },
     );
+    await reconcileClothingVariantAlertInTransaction(storeId, variantId, session);
     return variant;
   });
 }

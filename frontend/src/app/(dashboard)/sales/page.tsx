@@ -4,6 +4,7 @@ import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { ErrorState, LoadingState, PageHeading, Pagination, StatusBadge } from "@/components/dashboard-ui";
 import { useAuth } from "@/components/auth-provider";
+import ClothingSalesPage from "@/components/clothing-sales";
 import { ApiClientError, stocklyApi } from "@/lib/api-client";
 import type { Product, Sale } from "@/lib/types";
 import { formatAmount, formatDate, formatQuantity } from "@/lib/utils";
@@ -20,6 +21,11 @@ function newIdempotencyKey(): string {
 }
 
 export default function SalesPage() {
+  const { currentStore } = useAuth();
+  return currentStore?.shopType === "clothing" ? <ClothingSalesPage /> : <GrocerySalesPage />;
+}
+
+function GrocerySalesPage() {
   const { currentStore } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

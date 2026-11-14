@@ -85,9 +85,17 @@ export type StockMovement = {
 export type SaleLineItem = {
   product: string;
   productName?: string;
+  variant?: string;
+  variantSku?: string;
+  size?: string;
+  colour?: string;
+  designIdentifier?: string;
   quantity: string;
   unitPrice: string;
+  discountPerUnit?: string;
+  unitNetPrice?: string;
   lineTotal: string;
+  returnedQuantity?: string;
   allocations: Array<{ batch: string; quantity: string }>;
 };
 
@@ -97,7 +105,77 @@ export type Sale = {
   lineItems: SaleLineItem[];
   totalAmount: string;
   status: "completed";
+  businessType?: "clothing";
+  subtotal?: string;
+  discountAmount?: string;
+  paymentMethod?: PaymentMethod;
+  soldAt?: string;
   createdAt: string;
+};
+
+export type PaymentMethod = "cash" | "card" | "upi" | "other";
+
+export type ClothingSaleInput = {
+  items: Array<{
+    variantId: string;
+    quantity: string;
+    unitPrice?: string;
+    discountPerUnit?: string;
+  }>;
+  paymentMethod: PaymentMethod;
+};
+
+export type ClothingReturn = {
+  _id: string;
+  originalSale: string;
+  returnIdentifier: string;
+  returnedAt: string;
+  lineItems: Array<{
+    saleLineIndex: number;
+    product: string;
+    productName: string;
+    variant: string;
+    variantSku: string;
+    size: string;
+    colour: string;
+    designIdentifier?: string;
+    quantity: string;
+    condition: "saleable" | "damaged";
+    reason: string;
+    lineValue: string;
+  }>;
+  refundAmount: string;
+  refundPaymentMethod?: PaymentMethod;
+  exchangeCreditAmount?: string;
+  exchange?: string;
+};
+
+export type ClothingExchange = {
+  _id: string;
+  originalSale: string;
+  return: string;
+  exchangeIdentifier: string;
+  exchangedAt: string;
+  replacementItems: Array<{
+    product: string;
+    productName: string;
+    variant: string;
+    variantSku: string;
+    size: string;
+    colour: string;
+    designIdentifier?: string;
+    quantity: string;
+    unitPrice: string;
+    discountPerUnit: string;
+    lineTotal: string;
+  }>;
+  returnedValue: string;
+  replacementValue: string;
+  priceDifference: string;
+  additionalPaymentAmount: string;
+  refundAmount: string;
+  paymentMethod?: PaymentMethod;
+  refundPaymentMethod?: PaymentMethod;
 };
 
 export type Alert = {
@@ -105,6 +183,13 @@ export type Alert = {
   type: "LOW_STOCK" | "EXPIRING_SOON" | "EXPIRED_STOCK";
   product: string;
   batch?: string;
+  variant?: string;
+  productName?: string;
+  variantSku?: string;
+  size?: string;
+  colour?: string;
+  availableStock?: string;
+  lowStockThreshold?: string;
   status: "ACTIVE" | "ACKNOWLEDGED" | "RESOLVED";
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   title: string;
@@ -112,6 +197,51 @@ export type Alert = {
   firstDetectedAt: string;
   lastDetectedAt: string;
   resolvedAt?: string;
+};
+
+export type ClothingAnalytics = {
+  currency: string;
+  period: {
+    startDate: string;
+    endDate: string;
+    timezone: "UTC";
+    dateBoundary: string;
+  };
+  revenue: {
+    grossSales: string;
+    refunds: string;
+    directReturnRefunds: string;
+    exchangeAdditionalPayments: string;
+    exchangeRefunds: string;
+    netRevenue: string;
+  };
+  units: {
+    grossUnitsSold: string;
+    returnedUnits: string;
+    exchangeReplacementUnits: string;
+    netUnitsSold: string;
+  };
+  transactions: { sales: number; returns: number; exchanges: number };
+  returns: { transactions: number; unitsReturned: string; refundAmount: string };
+  exchanges: {
+    transactions: number;
+    unitsReturned: string;
+    replacementUnits: string;
+    replacementValue: string;
+    additionalPayments: string;
+    refunds: string;
+  };
+  bestSellingProducts: Array<{ name: string; unitsSold: string; netRevenue: string }>;
+  bestSellingSizes: Array<{ size: string; unitsSold: string }>;
+  bestSellingColours: Array<{ colour: string; unitsSold: string }>;
+  revenueTrend: Array<{
+    date: string;
+    grossSales: string;
+    refunds: string;
+    exchangeAdditionalPayments: string;
+    netRevenue: string;
+  }>;
+  currentInventory: { retailValue: string; lowStockVariants: number };
 };
 
 export type DemandDay = {

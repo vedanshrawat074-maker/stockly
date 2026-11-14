@@ -1,6 +1,7 @@
-import { Types } from "mongoose";
+import { Types, type ClientSession } from "mongoose";
 import { AlertModel, type AlertSeverity, type AlertType } from "../models/alert";
 import { BatchModel } from "../models/batch";
+import { ClothingVariantModel } from "../models/clothing-variant";
 import { InventoryModel } from "../models/inventory";
 import { ProductModel } from "../models/product";
 import { StoreModel } from "../models/store";
@@ -14,6 +15,7 @@ import {
   getStoreLocalDate,
 } from "./expiry-calendar";
 import { runInTransaction } from "./transaction-service";
+import { clothingCategories } from "../validators/clothing-validator";
 
 export type AlertCheckOptions = {
   expiryWarningDays?: number;
@@ -31,10 +33,35 @@ export type AlertCondition = {
   type: AlertType;
   product: Types.ObjectId;
   batch?: Types.ObjectId;
+  variant?: Types.ObjectId;
+  productName?: string;
+  variantSku?: string;
+  size?: string;
+  colour?: string;
+  availableStock?: Types.Decimal128;
+  lowStockThreshold?: Types.Decimal128;
   severity: AlertSeverity;
   deduplicationKey: string;
   title: string;
   details: string;
+};
+
+type ClothingAlertProduct = {
+  _id: Types.ObjectId;
+  name: string;
+  category: string;
+  isActive: boolean;
+};
+
+type ClothingAlertVariant = {
+  _id: Types.ObjectId;
+  store: Types.ObjectId;
+  product: Types.ObjectId;
+  sku: string;
+  size: string;
+  colour: string;
+  stockQuantity: Types.Decimal128;
+  lowStockThreshold: Types.Decimal128;
 };
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -58,6 +85,130 @@ function daysBetween(left: { year: number; month: number; day: number }, right: 
   const leftUtc = Date.UTC(left.year, left.month - 1, left.day);
   const rightUtc = Date.UTC(right.year, right.month - 1, right.day);
   return (rightUtc - leftUtc) / 86_400_000;
+}
+
+export function computeClothingVariantAlertConditions(
+  products: ClothingAlertProduct[],
+  variants: ClothingAlertVariant[],
+): AlertCondition[] {
+  const productsById = new Map(products.map((product) => [product._id.toHexString(), product]));
+  const conditions: AlertCondition[] = [];
+
+  for (const variant of variants) {
+    const product = productsById.get(variant.product.toHexString());
+    if (
+      !product ||
+      !product.isActive ||
+      !clothingCategories.includes(product.category as (typeof clothingCategories)[number]) ||
+      compareDecimals(variant.lowStockThreshold, "0") <= 0 ||
+      compareDecimals(variant.stockQuantity, variant.lowStockThreshold) > 0
+    ) {
+      continue;
+    }
+
+    const severity: AlertSeverity =
+      compareDecimals(variant.stockQuantity, "0") === 0
+        ? "CRITICAL"
+        : compareDecimals(variant.stockQuantity, variant.lowStockThreshold) < 0
+          ? "HIGH"
+          : "MEDIUM";
+    conditions.push({
+      type: "LOW_STOCK",
+      product: product._id,
+      variant: variant._id,
+      productName: product.name,
+      variantSku: variant.sku,
+      size: variant.size,
+      colour: variant.colour,
+      availableStock: variant.stockQuantity,
+      lowStockThreshold: variant.lowStockThreshold,
+      severity,
+      deduplicationKey: `LOW_STOCK_VARIANT:${variant._id.toHexString()}`,
+      title: `Low stock: ${product.name} · ${variant.size} / ${variant.colour}`,
+      details: `Variant ${variant.sku} has ${variant.stockQuantity.toString()} available; its low-stock threshold is ${variant.lowStockThreshold.toString()}.`,
+    });
+  }
+
+  return conditions;
+}
+
+async function upsertAlertCondition(
+  storeId: Types.ObjectId,
+  condition: AlertCondition,
+  session: ClientSession,
+  now: Date,
+) {
+  await AlertModel.findOneAndUpdate(
+    { store: storeId, deduplicationKey: condition.deduplicationKey },
+    [
+      {
+        $set: {
+          store: { $ifNull: ["$store", storeId] },
+          type: condition.type,
+          product: condition.product,
+          batch: condition.batch ?? "$$REMOVE",
+          variant: condition.variant ?? "$$REMOVE",
+          productName: condition.productName ?? "$$REMOVE",
+          variantSku: condition.variantSku ?? "$$REMOVE",
+          size: condition.size ?? "$$REMOVE",
+          colour: condition.colour ?? "$$REMOVE",
+          availableStock: condition.availableStock ?? "$$REMOVE",
+          lowStockThreshold: condition.lowStockThreshold ?? "$$REMOVE",
+          status: {
+            $cond: [{ $eq: ["$status", "ACKNOWLEDGED"] }, "ACKNOWLEDGED", "ACTIVE"],
+          },
+          severity: condition.severity,
+          deduplicationKey: condition.deduplicationKey,
+          title: condition.title,
+          details: condition.details,
+          firstDetectedAt: {
+            $cond: [
+              { $eq: ["$status", "RESOLVED"] },
+              now,
+              { $ifNull: ["$firstDetectedAt", now] },
+            ],
+          },
+          lastDetectedAt: now,
+          resolvedAt: "$$REMOVE",
+          createdAt: { $ifNull: ["$createdAt", now] },
+          updatedAt: now,
+        },
+      },
+    ],
+    { upsert: true, new: true, session, timestamps: false },
+  ).exec();
+}
+
+export async function reconcileClothingVariantAlertInTransaction(
+  storeId: Types.ObjectId,
+  variantId: Types.ObjectId,
+  session: ClientSession,
+  now = new Date(),
+): Promise<void> {
+  const variant = await ClothingVariantModel.findOne({ _id: variantId, store: storeId })
+    .session(session)
+    .lean();
+  const product = variant
+    ? await ProductModel.findOne({ _id: variant.product, store: storeId })
+        .select({ name: 1, category: 1, isActive: 1 })
+        .session(session)
+        .lean()
+    : null;
+  const condition = variant && product
+    ? computeClothingVariantAlertConditions([product], [variant])[0]
+    : undefined;
+  const deduplicationKey = `LOW_STOCK_VARIANT:${variantId.toHexString()}`;
+
+  if (condition) {
+    await upsertAlertCondition(storeId, condition, session, now);
+    return;
+  }
+
+  await AlertModel.updateOne(
+    { store: storeId, deduplicationKey, status: { $ne: "RESOLVED" } },
+    { $set: { status: "RESOLVED", resolvedAt: now, lastDetectedAt: now } },
+    { session },
+  ).exec();
 }
 
 export function computeAlertConditions(
@@ -170,17 +321,28 @@ async function checkStoreAlertsInTransaction(
     if (!store) throw new ApiError(404, "STORE_NOT_FOUND", "Store was not found.");
     getStoreLocalDate(now, store.timezone);
 
-    const products = await ProductModel.find({ store: storeId }).session(session).lean();
-    const inventories = await InventoryModel.find({ store: storeId }).session(session).lean();
-    const batches = await BatchModel.find({ store: storeId }).session(session).lean();
-    const conditions = computeAlertConditions(
-      store.timezone,
-      products,
-      inventories,
-      batches,
-      now,
-      expiryWarningDays,
-    );
+    let conditions: AlertCondition[];
+    if (store.shopType === "clothing") {
+      const [products, variants] = await Promise.all([
+        ProductModel.find({ store: storeId }).session(session).lean(),
+        ClothingVariantModel.find({ store: storeId }).session(session).lean(),
+      ]);
+      conditions = computeClothingVariantAlertConditions(products, variants);
+    } else {
+      const [products, inventories, batches] = await Promise.all([
+        ProductModel.find({ store: storeId }).session(session).lean(),
+        InventoryModel.find({ store: storeId }).session(session).lean(),
+        BatchModel.find({ store: storeId }).session(session).lean(),
+      ]);
+      conditions = computeAlertConditions(
+        store.timezone,
+        products,
+        inventories,
+        batches,
+        now,
+        expiryWarningDays,
+      );
+    }
     const currentByKey = new Map(conditions.map((condition) => [condition.deduplicationKey, condition]));
     const existing = await AlertModel.find({
       store: storeId,
@@ -204,38 +366,7 @@ async function checkStoreAlertsInTransaction(
           .session(session)
           .exec());
 
-      await AlertModel.findOneAndUpdate(
-        { store: storeId, deduplicationKey: condition.deduplicationKey },
-        [
-          {
-            $set: {
-              store: { $ifNull: ["$store", storeId] },
-              type: condition.type,
-              product: condition.product,
-              batch: condition.batch ?? "$$REMOVE",
-              status: {
-                $cond: [{ $eq: ["$status", "ACKNOWLEDGED"] }, "ACKNOWLEDGED", "ACTIVE"],
-              },
-              severity: condition.severity,
-              deduplicationKey: condition.deduplicationKey,
-              title: condition.title,
-              details: condition.details,
-              firstDetectedAt: {
-                $cond: [
-                  { $eq: ["$status", "RESOLVED"] },
-                  now,
-                  { $ifNull: ["$firstDetectedAt", now] },
-                ],
-              },
-              lastDetectedAt: now,
-              resolvedAt: "$$REMOVE",
-              createdAt: { $ifNull: ["$createdAt", now] },
-              updatedAt: now,
-            },
-          },
-        ],
-        { upsert: true, new: true, session, timestamps: false },
-      ).exec();
+      await upsertAlertCondition(storeId, condition, session, now);
 
       if (prior) refreshed += 1;
       else created += 1;

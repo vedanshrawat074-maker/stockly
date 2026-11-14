@@ -3,6 +3,8 @@
 import { AlertTriangle, Check, Play, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorState, FilterSelect, LoadingState, PageHeading, Pagination, StatusBadge } from "@/components/dashboard-ui";
+import { useAuth } from "@/components/auth-provider";
+import ClothingAlertsPage from "@/components/clothing-alerts";
 import { ApiClientError, stocklyApi } from "@/lib/api-client";
 import type { Alert, Product } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -24,6 +26,11 @@ const typeLabels: Record<Alert["type"], string> = {
 };
 
 export default function AlertsPage() {
+  const { currentStore } = useAuth();
+  return currentStore?.shopType === "clothing" ? <ClothingAlertsPage /> : <GroceryAlertsPage />;
+}
+
+function GroceryAlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [page, setPage] = useState(1);

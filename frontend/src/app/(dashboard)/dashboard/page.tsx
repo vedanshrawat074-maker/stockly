@@ -8,6 +8,8 @@ import type { RestockingRecommendation, Sale } from "@/lib/types";
 import { formatAmount, formatDate, formatQuantity, summarizeSaleProducts } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState, PageHeading, StatCard, StatusBadge } from "@/components/dashboard-ui";
 import { useAuth } from "@/components/auth-provider";
+import ClothingAnalyticsPage from "@/components/clothing-analytics";
+import { isClothingAnalyticsRoute } from "@/lib/business-views";
 
 type DashboardData = {
   productCount: number;
@@ -22,6 +24,13 @@ function message(error: unknown): string {
 }
 
 export default function DashboardPage() {
+  const { currentStore } = useAuth();
+  return isClothingAnalyticsRoute(currentStore?.shopType, "/dashboard")
+    ? <ClothingAnalyticsPage />
+    : <GroceryDashboardPage />;
+}
+
+function GroceryDashboardPage() {
   const { currentStore } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);

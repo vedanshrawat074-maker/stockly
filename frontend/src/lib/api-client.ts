@@ -3,6 +3,10 @@ import type {
   AuthResponse,
   AuthUser,
   Batch,
+  ClothingAnalytics,
+  ClothingExchange,
+  ClothingReturn,
+  ClothingSaleInput,
   ClothingVariant,
   ClothingVariantInput,
   CreateStoreInput,
@@ -12,6 +16,7 @@ import type {
   InventoryDetail,
   InventoryRecord,
   Page,
+  PaymentMethod,
   Product,
   RestockingRecommendation,
   Sale,
@@ -252,6 +257,76 @@ export const stocklyApi = {
     ),
   sales: (page = 1, limit = 20) =>
     request<Page<Sale>>(`/sales${queryString({ page, limit })}`),
+  clothingSales: (page = 1, limit = 20) =>
+    request<Page<Sale>>(`/clothing/sales${queryString({ page, limit })}`),
+  clothingSale: (saleId: string) =>
+    request<{ data: Sale }>(`/clothing/sales/${encodeURIComponent(saleId)}`),
+  createClothingSale: (input: ClothingSaleInput, idempotencyKey: string) =>
+    request<{ data: Sale; meta: { idempotentReplay: boolean } }>("/clothing/sales", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    }),
+  clothingReturns: (options: { saleId?: string; page?: number; limit?: number } = {}) =>
+    request<Page<ClothingReturn>>(
+      `/clothing/returns${queryString({
+        saleId: options.saleId,
+        page: options.page ?? 1,
+        limit: options.limit ?? 20,
+      })}`,
+    ),
+  createClothingReturn: (
+    input: {
+      saleId: string;
+      items: Array<{
+        saleLineIndex: number;
+        quantity: string;
+        condition: "saleable" | "damaged";
+        reason: string;
+      }>;
+      refundPaymentMethod: PaymentMethod;
+    },
+    idempotencyKey: string,
+  ) =>
+    request<{ data: ClothingReturn; meta: { idempotentReplay: boolean } }>(
+      "/clothing/returns",
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(input),
+      },
+    ),
+  clothingExchanges: (options: { saleId?: string; page?: number; limit?: number } = {}) =>
+    request<Page<ClothingExchange>>(
+      `/clothing/exchanges${queryString({
+        saleId: options.saleId,
+        page: options.page ?? 1,
+        limit: options.limit ?? 20,
+      })}`,
+    ),
+  createClothingExchange: (
+    input: {
+      saleId: string;
+      returnedItems: Array<{
+        saleLineIndex: number;
+        quantity: string;
+        condition: "saleable" | "damaged";
+        reason: string;
+      }>;
+      replacementItems: ClothingSaleInput["items"];
+      paymentMethod?: PaymentMethod;
+      refundPaymentMethod?: PaymentMethod;
+    },
+    idempotencyKey: string,
+  ) =>
+    request<{ data: ClothingExchange; meta: { idempotentReplay: boolean } }>(
+      "/clothing/exchanges",
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(input),
+      },
+    ),
   createSale: (
     items: Array<{ productId: string; quantity: string }>,
     idempotencyKey: string,
@@ -286,6 +361,14 @@ export const stocklyApi = {
       method: "POST",
       body: JSON.stringify(expiryWarningDays === undefined ? {} : { expiryWarningDays }),
     }),
+  resolveAlert: (alertId: string) =>
+    request<{ data: Alert }>(`/alerts/${encodeURIComponent(alertId)}/resolve`, {
+      method: "PATCH",
+    }),
+  clothingAnalytics: (startDate: string, endDate: string) =>
+    request<{ data: ClothingAnalytics }>(
+      `/clothing/analytics${queryString({ startDate, endDate })}`,
+    ),
   demandHistory: (options: {
     startDate: string;
     endDate: string;

@@ -1,6 +1,9 @@
 import { Types } from "mongoose";
 import { describe, expect, it } from "vitest";
-import { computeAlertConditions } from "../src/services/alert-generation-service";
+import {
+  computeAlertConditions,
+  computeClothingVariantAlertConditions,
+} from "../src/services/alert-generation-service";
 import {
   addCalendarDays,
   compareCalendarDates,
@@ -58,6 +61,81 @@ describe("expiry calendar and alert conditions", () => {
     expect(localDate).toEqual({ year: 2026, month: 10, day: 26 });
     expect(compareCalendarDates(addCalendarDays(localDate, 1), { year: 2026, month: 10, day: 27 })).toBe(0);
     expect(() => getStoreLocalDate(instant, "Not/A-Timezone")).toThrow(/timezone/i);
+  });
+
+  describe("clothing variant alert conditions", () => {
+    it("creates independent alerts with the product and variant snapshots", () => {
+      const productId = new Types.ObjectId();
+      const product = {
+        _id: productId,
+        name: "Everyday Shirt",
+        category: "Men",
+        isActive: true,
+      };
+      const conditions = computeClothingVariantAlertConditions([product], [
+        {
+          _id: new Types.ObjectId(),
+          store: new Types.ObjectId(),
+          product: productId,
+          sku: "SHIRT-M-BLUE",
+          size: "M",
+          colour: "blue",
+          stockQuantity: Types.Decimal128.fromString("0"),
+          lowStockThreshold: Types.Decimal128.fromString("3"),
+        },
+        {
+          _id: new Types.ObjectId(),
+          store: new Types.ObjectId(),
+          product: productId,
+          sku: "SHIRT-L-BLUE",
+          size: "L",
+          colour: "blue",
+          stockQuantity: Types.Decimal128.fromString("2"),
+          lowStockThreshold: Types.Decimal128.fromString("3"),
+        },
+      ]);
+
+      expect(conditions).toHaveLength(2);
+      expect(conditions.map(({ severity }) => severity)).toEqual(["CRITICAL", "HIGH"]);
+      expect(conditions[0]).toMatchObject({
+        productName: "Everyday Shirt",
+        variantSku: "SHIRT-M-BLUE",
+        size: "M",
+        colour: "blue",
+        deduplicationKey: expect.stringMatching(/^LOW_STOCK_VARIANT:/),
+      });
+    });
+
+    it("includes threshold equality but ignores zero thresholds, inactive products, and non-clothing categories", () => {
+      const productId = new Types.ObjectId();
+      const activeProduct = {
+        _id: productId,
+        name: "Accessories",
+        category: "Accessories",
+        isActive: true,
+      };
+      const variant = (stock: string, thresholdValue: string, product = productId) => ({
+        _id: new Types.ObjectId(),
+        store: new Types.ObjectId(),
+        product,
+        sku: "ACCESSORY",
+        size: "ONE SIZE",
+        colour: "black",
+        stockQuantity: Types.Decimal128.fromString(stock),
+        lowStockThreshold: Types.Decimal128.fromString(thresholdValue),
+      });
+      const inactiveProduct = { ...activeProduct, isActive: false };
+      const groceryProduct = { ...activeProduct, category: "Produce" };
+
+      expect(computeClothingVariantAlertConditions(
+        [activeProduct],
+        [variant("3", "3"), variant("0", "0")],
+      )).toMatchObject([{ severity: "MEDIUM", availableStock: Types.Decimal128.fromString("3") }]);
+      expect(computeClothingVariantAlertConditions(
+        [inactiveProduct, groceryProduct],
+        [variant("0", "3"), variant("0", "3", new Types.ObjectId())],
+      )).toHaveLength(0);
+    });
   });
 
   it("treats expiry yesterday as expired, today as warning, and tomorrow as warning", () => {

@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { usePathname } from "next/navigation";
+import ClothingAnalyticsPage from "@/components/clothing-analytics";
+import { useAuth } from "@/components/auth-provider";
 import { ErrorState, LoadingState, PageHeading, StatusBadge } from "@/components/dashboard-ui";
 import { ApiClientError, stocklyApi } from "@/lib/api-client";
+import { isClothingAnalyticsRoute } from "@/lib/business-views";
 import type { DemandSeries, Forecast, Product } from "@/lib/types";
 import { formatQuantity } from "@/lib/utils";
 
@@ -23,6 +27,14 @@ function validDate(value: string): boolean {
 }
 
 export default function AnalyticsPage() {
+  const { currentStore } = useAuth();
+  const pathname = usePathname();
+  return isClothingAnalyticsRoute(currentStore?.shopType, pathname)
+    ? <ClothingAnalyticsPage />
+    : <DemandAnalyticsPage />;
+}
+
+function DemandAnalyticsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
   const [startDate, setStartDate] = useState(dateOffset(35));
